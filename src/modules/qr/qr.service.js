@@ -322,135 +322,85 @@ class QRService {
     }
 
     // Step 6: Find the QR transaction DB record
-        // ── Store in DB for audit trail ──────────────────────────
-    const qrTransaction = await this.repo.createQRTransaction({
-      productId:         product_id,
-      conversationId:    conversation.id,
-      sellerId,
-      buyerId:           buyer_id,
-      tokenHash,
-      expiresAt,
-      ipAddress:         deviceInfo.ipAddress,
-      deviceFingerprint: deviceInfo.deviceFingerprint,
-    });
-
-    // ── Mark product as reserved ─────────────────────────────
-    if (product.status === 'available') {
-      await this.supabase
-        .from('products')
-        .update({
-          status:     PRODUCT_STATUS.RESERVED,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', product_id);
-
-      await this.redis.del(CACHE_KEYS.PRODUCT(product_id));
+    const dbRecordFull = await this.repo.findQRByTokenHash(tokenHash);
+    if (!dbRecordFull) {
+      throw new AppError('QR transaction record missing in DB', 500);
     }
+    const qrTransactionId = dbRecordFull.id;
 
-    // ── Generate QR code image ───────────────────────────────
-    const qrCodeDataURL = await QRCode.toDataURL(token, {
-      errorCorrectionLevel: 'H',
-      type:                 'image/png',
-      quality:              0.95,
-      margin:               2,
-      color: { dark: '#000000', light: '#FFFFFF' },
-      width: 400,
+    // ── Complete the sale via atomic RPC ─────────────────────
+    await this.repo.completeSaleTransaction({
+      productId: payload.productId,
+      qrTransactionId: qrTransactionId,
+      sellerId: payload.sellerId,
+      buyerId: payload.buyerId,
+      conversationId: payload.conversationId
     });
-
-    // ── ✅ NEW: Insert QR token as special chat message ───────
-    // This sends the token directly into the conversation
-    // so the buyer can tap "Complete Purchase" on the message
-    const qrMessageContent = JSON.stringify({
-      type:          'qr_verification',
-      token,                              // encrypted token buyer needs
-      transactionId: qrTransaction.id,
-      productId:     product_id,
-      productTitle:  product.title,
-      productPrice:  product.price,
-      currency:      product.currency,
-      expiresAt,
-      sellerId,
-      buyerId:       buyer_id,
-    });
-
-    const { data: qrMessage } = await this.supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversation.id,
-        sender_id:       sellerId,
-        content:         qrMessageContent,
-        content_type:    'qr_code',         // special content type
-        created_at:      new Date().toISOString(),
-      })
-      .select('id, conversation_id, sender_id, content, content_type, created_at')
-      .single();
 
     // ── Update conversation last message ─────────────────────
     await this.supabase
       .from('conversations')
       .update({
         last_message_at:      new Date().toISOString(),
-        last_message_preview: '📱 QR Code — Tap to complete purchase',
+        last_message_preview: '✅ Deal Completed!',
         updated_at:           new Date().toISOString(),
+        status:               'completed'
       })
-      .eq('id', conversation.id);
+      .eq('id', payload.conversationId);
 
-    // ── Emit the QR message via socket to both parties ───────
+    // ── Emit socket event to both parties ───────
     if (this.fastify && this.fastify.chatGateway) {
-      // Send QR message as a chat message event
       this.fastify.chatGateway.io
-        .to(`conversation:${conversation.id}`)
-        .emit('message_received', {
-          message: qrMessage,
-          conversationId: conversation.id,
+        .to(`conversation:${payload.conversationId}`)
+        .emit('sale_completed', {
+          productId: payload.productId,
+          transactionId: qrTransactionId,
+          sellerId: payload.sellerId,
+          buyerId: payload.buyerId
         });
-
-      // Also emit dedicated QR generated event
-      this.fastify.chatGateway.emitQRGenerated(conversation.id, {
-        productId:  product_id,
-        sellerId,
-        buyerId:    buyer_id,
-        expiresAt,
-      });
     }
 
-    // ── Send push notification to buyer ─────────────────────
+    // ── Send push notification to seller ─────────────────────
     await this.notificationService.createNotification({
-      userId: buyer_id,
-      type:   constants.NOTIFICATION_TYPES.QR_GENERATED,
-      title:  '📱 QR Code Ready — Complete Your Purchase',
-      body:   `Open your chat with the seller to scan the QR and complete buying ${product.title}.`,
+      userId: payload.sellerId,
+      type:   constants.NOTIFICATION_TYPES.SALE_COMPLETED,
+      title:  '✅ Sale Completed!',
+      body:   `${product.title} has been successfully sold to the buyer.`,
       data: {
-        productId:      product_id,
-        conversationId: conversation.id,
-        transactionId:  qrTransaction.id,
+        productId:      payload.productId,
+        conversationId: payload.conversationId,
+        transactionId:  qrTransactionId,
       },
     });
 
+    // ── Award Badges (async) ─────────────────────
+    this.badgeEngine.evaluateBadges(payload.sellerId, 'sale_completed').catch((err) =>
+      logger.error({ err, sellerId: payload.sellerId }, 'Badge evaluation failed')
+    );
+    this.badgeEngine.evaluateBadges(payload.buyerId, 'purchase_completed').catch((err) =>
+      logger.error({ err, buyerId: payload.buyerId }, 'Badge evaluation failed')
+    );
+
     logger.info(
       {
-        sellerId,
-        buyerId:       buyer_id,
-        productId:     product_id,
-        transactionId: qrTransaction.id,
-        expiresAt,
+        sellerId: payload.sellerId,
+        buyerId: payload.buyerId,
+        productId: payload.productId,
+        transactionId: qrTransactionId,
       },
-      'QR code generated and sent as chat message'
+      'Sale completed successfully via QR scan'
     );
 
     return {
-      transaction_id:     qrTransaction.id,
-      qr_code:            qrCodeDataURL,
-      expires_at:         expiresAt,
-      expires_in_minutes: appConfig.qr.expiryMinutes,
-      token,                                // Return token to seller to show in modal
-      ...(process.env.NODE_ENV === 'test' && { raw_token: token }),
+      transaction_id: qrTransactionId,
       product: {
         id:       product.id,
         title:    product.title,
         price:    product.price,
         currency: product.currency,
       },
+      seller_id: payload.sellerId,
+      buyer_id: payload.buyerId,
     };
   }
 
