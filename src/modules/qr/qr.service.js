@@ -363,7 +363,7 @@ class QRService {
     // ── Send push notification to seller ─────────────────────
     await this.notificationService.createNotification({
       userId: payload.sellerId,
-      type:   constants.NOTIFICATION_TYPES.SALE_COMPLETED,
+      type:   constants.NOTIFICATION_TYPES.PRODUCT_SOLD,
       title:  '✅ Sale Completed!',
       body:   `${product.title} has been successfully sold to the buyer.`,
       data: {
