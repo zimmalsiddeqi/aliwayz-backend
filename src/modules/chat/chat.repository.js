@@ -98,6 +98,10 @@ class ChatRepository {
           id,
           username,
           avatar_url
+        ),
+        qr_transactions (
+          id,
+          status
         )
       `)
       .eq('id', conversationId)

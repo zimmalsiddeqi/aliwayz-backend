@@ -374,10 +374,10 @@ class QRService {
     });
 
     // ── Award Badges (async) ─────────────────────
-    this.badgeEngine.evaluateBadges(payload.sellerId, 'sale_completed').catch((err) =>
+    this.badgeEngine.evaluateAndAssignBadges(payload.sellerId, 'sale_completed').catch((err) =>
       logger.error({ err, sellerId: payload.sellerId }, 'Badge evaluation failed')
     );
-    this.badgeEngine.evaluateBadges(payload.buyerId, 'purchase_completed').catch((err) =>
+    this.badgeEngine.evaluateAndAssignBadges(payload.buyerId, 'purchase_completed').catch((err) =>
       logger.error({ err, buyerId: payload.buyerId }, 'Badge evaluation failed')
     );
 
