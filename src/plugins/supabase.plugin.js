@@ -22,6 +22,13 @@ async function supabasePlugin(fastify) {
   // Service role client
   // serviceRoleKey bypasses RLS automatically
   // ─────────────────────────────────────────
+  const https = require('https');
+  const agent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 1000,
+    maxSockets: 64, // Pooled connections
+  });
+
   const supabase = createClient(
     supabaseConfig.url,
     supabaseConfig.serviceRoleKey,
@@ -38,6 +45,12 @@ async function supabasePlugin(fastify) {
         headers: {
           // Explicitly set role to service_role
           'x-supabase-role': 'service_role',
+        },
+        fetch: (url, options) => {
+          return fetch(url, {
+            ...options,
+            agent,
+          });
         },
       },
     }

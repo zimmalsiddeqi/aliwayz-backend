@@ -24,8 +24,14 @@ const start = async () => {
       `🔗 API: http://localhost:${appConfig.port}/api/${appConfig.apiVersion}`
     );
 
-    await startScheduler(fastify);
-    logger.info('⚙️  Background jobs scheduler started');
+    const runScheduler = process.env.RUN_SCHEDULER === 'true' || appConfig.isDevelopment;
+
+    if (runScheduler) {
+      await startScheduler(fastify);
+      logger.info('⚙️  Background jobs scheduler started');
+    } else {
+      logger.info('⚙️  Background jobs scheduler bypassed (non-worker instance)');
+    }
 
   } catch (err) {
     logger.error({ err }, 'Failed to start server');

@@ -277,7 +277,7 @@ class SearchService {
     try {
       // Get top N searches by score (descending)
       const results = await this.redis.client.zrevrange(
-        `${this.redis.client.options.keyPrefix || ''}${POPULAR_SEARCHES_KEY}`,
+        POPULAR_SEARCHES_KEY,
         0,
         limit - 1,
         'WITHSCORES'
@@ -381,7 +381,7 @@ class SearchService {
   async _incrementPopularSearch(query) {
     try {
       const normalizedQuery = query.toLowerCase().trim();
-      const key = `${this.redis.client.options.keyPrefix || ''}${POPULAR_SEARCHES_KEY}`;
+      const key = POPULAR_SEARCHES_KEY;
 
       // ZINCRBY increments score by 1 (creates if not exists)
       await this.redis.client.zincrby(key, 1, normalizedQuery);

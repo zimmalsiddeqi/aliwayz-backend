@@ -141,7 +141,7 @@ class ChatGateway {
 
       // Track active room members in Redis
       await this.redis.client.sadd(
-        `${this.redis.client.options.keyPrefix || ''}conv:members:${conversationId}`,
+        `conv:members:${conversationId}`,
         socket.user.id
       );
 
@@ -182,7 +182,7 @@ class ChatGateway {
 
       // Remove from active members
       await this.redis.client.srem(
-        `${this.redis.client.options.keyPrefix || ''}conv:members:${conversationId}`,
+        `conv:members:${conversationId}`,
         socket.user.id
       );
 
@@ -250,7 +250,10 @@ class ChatGateway {
     const { conversationId } = data;
     if (!conversationId) return;
 
-    socket.to(`conversation:${conversationId}`).emit('user_typing', {
+    const roomName = `conversation:${conversationId}`;
+    if (!socket.rooms.has(roomName)) return;
+
+    socket.to(roomName).emit('user_typing', {
       userId:         socket.user.id,
       username:       socket.user.username,
       conversationId,
@@ -264,7 +267,10 @@ class ChatGateway {
     const { conversationId } = data;
     if (!conversationId) return;
 
-    socket.to(`conversation:${conversationId}`).emit('user_stop_typing', {
+    const roomName = `conversation:${conversationId}`;
+    if (!socket.rooms.has(roomName)) return;
+
+    socket.to(roomName).emit('user_stop_typing', {
       userId:         socket.user.id,
       conversationId,
     });

@@ -3,71 +3,23 @@
 const logger = require('../shared/utils/logger');
 
 module.exports = async function expireQRTokensJob(supabase, redis) {
-  const now = new Date().toISOString();
+  try {
+    const { data: count, error } = await supabase.rpc('expire_stale_qr_tokens');
 
-  // Find pending QR transactions that have expired
-  const { data: expiredQRs, error } = await supabase
-    .from('qr_transactions')
-    .select('id, product_id, token_hash')
-    .eq('status', 'pending')
-    .lte('expires_at', now);
-
-  if (error) {
-    logger.error({ error }, 'expireQRTokens: fetch failed');
-    return;
-  }
-
-  if (!expiredQRs || expiredQRs.length === 0) {
-    logger.info('expireQRTokens: No expired QR tokens found');
-    return;
-  }
-
-  logger.info(
-    { count: expiredQRs.length },
-    'expireQRTokens: Marking expired QR tokens'
-  );
-
-  // Batch update expired QRs in DB
-  const expiredIds = expiredQRs.map((q) => q.id);
-
-  const { error: updateError } = await supabase
-    .from('qr_transactions')
-    .update({ status: 'expired' })
-    .in('id', expiredIds);
-
-  if (updateError) {
-    logger.error({ updateError }, 'expireQRTokens: batch update failed');
-    return;
-  }
-
-  // Revert reserved products back to available if QR expired
-  const productIds = [...new Set(expiredQRs.map((q) => q.product_id))];
-
-  for (const productId of productIds) {
-    const { data: product } = await supabase
-      .from('products')
-      .select('id, status')
-      .eq('id', productId)
-      .single();
-
-    if (product && product.status === 'reserved') {
-      await supabase
-        .from('products')
-        .update({
-          status: 'available',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', productId);
-
-      logger.info(
-        { productId },
-        'expireQRTokens: Product reverted to available after QR expiry'
-      );
+    if (error) {
+      logger.error({ error }, 'expireQRTokens: batch execution failed');
+      return;
     }
-  }
 
-  logger.info(
-    { expired: expiredIds.length },
-    'expireQRTokens: Job complete'
-  );
+    if (count > 0) {
+      logger.info(
+        { revertedCount: count },
+        'expireQRTokens: Reverted products linked to expired QRs'
+      );
+    } else {
+      logger.info('expireQRTokens: No expired QR tokens to process');
+    }
+  } catch (err) {
+    logger.error({ err }, 'expireQRTokens: Job failed');
+  }
 };

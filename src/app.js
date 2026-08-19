@@ -78,6 +78,14 @@ const buildApp = async () => {
   });
 
   // ─────────────────────────────────────────
+  // Compression (gzip/brotli)
+  // ─────────────────────────────────────────
+  await fastify.register(require("@fastify/compress"), {
+    global: true,
+    threshold: 1024, // Compress responses larger than 1KB
+  });
+
+  // ─────────────────────────────────────────
   // Multipart (file uploads)
   // ─────────────────────────────────────────
   await fastify.register(require("@fastify/multipart"), {
@@ -284,6 +292,16 @@ const buildApp = async () => {
     }
 
     // ── Unexpected 500 errors ───────────────────────────────
+    const logBody = request.body ? { ...request.body } : undefined;
+    if (logBody) {
+      const sensitiveKeys = ['password', 'token', 'otp', 'code', 'refresh_token', 'accessToken', 'refreshToken'];
+      for (const key of sensitiveKeys) {
+        if (key in logBody) {
+          logBody[key] = '[REDACTED]';
+        }
+      }
+    }
+
     logger.error(
       {
         err: {
@@ -294,7 +312,7 @@ const buildApp = async () => {
         url: request.url,
         method: request.method,
         userId: request.user?.id || "guest",
-        body: request.body,
+        body: logBody,
       },
       "Unhandled server error",
     );

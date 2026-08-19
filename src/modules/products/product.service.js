@@ -294,15 +294,22 @@ class ProductService {
       }
 
       // Process image — create two sizes: main (800px) and thumbnail (300px)
-      const [mainBuffer] = await Promise.all([
+      const [mainBuffer, thumbBuffer] = await Promise.all([
         sharp(file.buffer)
           .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
           .webp({ quality: 85 })
           .toBuffer(),
+        sharp(file.buffer)
+          .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 80 })
+          .toBuffer(),
       ]);
 
-      const fileName = `products/${productId}/${uuidv4()}.webp`;
+      const imageUuid = uuidv4();
+      const fileName = `products/${productId}/${imageUuid}.webp`;
+      const thumbFileName = `products/${productId}/thumbnails/${imageUuid}.webp`;
 
+      // Upload main image
       const { error: uploadError } = await this.supabase.storage
         .from(appConfig.storage.bucket)
         .upload(fileName, mainBuffer, {
@@ -315,16 +322,40 @@ class ProductService {
         throw new AppError('Failed to upload image', 500);
       }
 
+      // Upload thumbnail image
+      const { error: thumbUploadError } = await this.supabase.storage
+        .from(appConfig.storage.bucket)
+        .upload(thumbFileName, thumbBuffer, {
+          contentType: 'image/webp',
+          cacheControl: '3600',
+        });
+
+      if (thumbUploadError) {
+        logger.error({ thumbUploadError }, 'Product thumbnail upload failed');
+        // Rollback main image upload to keep storage clean
+        await this.supabase.storage
+          .from(appConfig.storage.bucket)
+          .remove([fileName]);
+        throw new AppError('Failed to upload image thumbnail', 500);
+      }
+
       const storageUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${appConfig.storage.bucket}/${fileName}`;
       const cdnUrl = appConfig.cdn.baseUrl
         ? `${appConfig.cdn.baseUrl}/${appConfig.storage.bucket}/${fileName}`
         : storageUrl;
+
+      const thumbStorageUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${appConfig.storage.bucket}/${thumbFileName}`;
+      const thumbCdnUrl = appConfig.cdn.baseUrl
+        ? `${appConfig.cdn.baseUrl}/${appConfig.storage.bucket}/${thumbFileName}`
+        : thumbStorageUrl;
 
       const isPrimary = displayOrder === 0;
 
       const imageRecord = await this.repo.addProductImage(productId, {
         storage_url: storageUrl,
         cdn_url: cdnUrl,
+        thumbnail_storage_url: thumbStorageUrl,
+        thumbnail_cdn_url: thumbCdnUrl,
         display_order: displayOrder,
         is_primary: isPrimary,
       });
@@ -358,10 +389,18 @@ class ProductService {
       `/storage/v1/object/public/${appConfig.storage.bucket}/`
     )[1];
 
-    if (filePath) {
+    const thumbFilePath = image.thumbnail_storage_url
+      ? image.thumbnail_storage_url.split(
+          `/storage/v1/object/public/${appConfig.storage.bucket}/`
+        )[1]
+      : null;
+
+    const filesToRemove = [filePath, thumbFilePath].filter(Boolean);
+
+    if (filesToRemove.length > 0) {
       const { error: storageError } = await this.supabase.storage
         .from(appConfig.storage.bucket)
-        .remove([filePath]);
+        .remove(filesToRemove);
 
       if (storageError) {
         logger.warn({ storageError }, 'Storage deletion failed — removing DB record anyway');
@@ -451,21 +490,33 @@ class ProductService {
   // BROWSE ALL PRODUCTS
   // ─────────────────────────────────────────
   async browseProducts(query) {
-  const { page, limit, offset } = getPaginationParams(query);
+    const { page, limit, offset } = getPaginationParams(query);
 
-  const { data, count } = await this.repo.browseProducts({
-    limit,
-    offset,
-    categoryId: query.category_id,
-    minPrice:   query.min_price ? parseFloat(query.min_price) : undefined,
-    maxPrice:   query.max_price ? parseFloat(query.max_price) : undefined,
-    condition:  query.condition,
-    sort:       query.sort || 'newest',
-    city:       query.city,
-    lat:        query.lat,
-    lng:        query.lng,
-    radiusKm:   query.radius_km ? parseFloat(query.radius_km) : undefined,
-  });
+    const parsedMinPrice = query.min_price ? parseFloat(query.min_price) : undefined;
+    const parsedMaxPrice = query.max_price ? parseFloat(query.max_price) : undefined;
+    const parsedRadiusKm = query.radius_km ? parseFloat(query.radius_km) : undefined;
+    const parsedLat = query.lat ? parseFloat(query.lat) : undefined;
+    const parsedLng = query.lng ? parseFloat(query.lng) : undefined;
+
+    const minPrice = isNaN(parsedMinPrice) || parsedMinPrice < 0 ? undefined : parsedMinPrice;
+    const maxPrice = isNaN(parsedMaxPrice) || parsedMaxPrice < 0 ? undefined : parsedMaxPrice;
+    const radiusKm = isNaN(parsedRadiusKm) || parsedRadiusKm < 0 ? undefined : parsedRadiusKm;
+    const lat = isNaN(parsedLat) ? undefined : parsedLat;
+    const lng = isNaN(parsedLng) ? undefined : parsedLng;
+
+    const { data, count } = await this.repo.browseProducts({
+      limit,
+      offset,
+      categoryId: query.category_id,
+      minPrice,
+      maxPrice,
+      condition:  query.condition,
+      sort:       query.sort || 'newest',
+      city:       query.city,
+      lat,
+      lng,
+      radiusKm,
+    });
 
   return { data, pagination: { page, limit, total: count } };
 }

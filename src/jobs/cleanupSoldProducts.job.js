@@ -2,14 +2,13 @@
 
 const logger = require('../shared/utils/logger');
 const { CACHE_KEYS } = require('../shared/constants/cacheKeys');
-
 module.exports = async function cleanupSoldProductsJob(supabase, redis) {
   const now = new Date().toISOString();
 
-  // Find all sold products whose 24hr window has passed
+  // Find all sold products whose 24hr window has passed (just get IDs to minimize payload)
   const { data: productsToRemove, error: fetchError } = await supabase
     .from('products')
-    .select('id, title, slug, seller_id')
+    .select('id, title')
     .eq('status', 'sold')
     .eq('is_deleted', false)
     .lte('auto_remove_at', now);
@@ -26,51 +25,30 @@ module.exports = async function cleanupSoldProductsJob(supabase, redis) {
 
   logger.info(
     { count: productsToRemove.length },
-    'cleanupSoldProducts: Removing sold products from marketplace'
+    'cleanupSoldProducts: Running batch cleanup of sold products'
   );
 
-  for (const product of productsToRemove) {
-    try {
-      // Soft delete the product (remove from marketplace view)
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({
-          is_deleted: true,
-          deleted_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', product.id)
-        .eq('status', 'sold');
+  // Call the database batch RPC
+  const { data: count, error: rpcError } = await supabase.rpc('auto_remove_sold_products');
 
-      if (updateError) {
-        logger.error(
-          { updateError, productId: product.id },
-          'cleanupSoldProducts: Failed to mark product as deleted'
-        );
-        continue;
-      }
-
-      // Invalidate product cache
-      await redis.del(CACHE_KEYS.PRODUCT(product.id));
-
-      logger.info(
-        { productId: product.id, title: product.title },
-        'cleanupSoldProducts: Product removed from marketplace'
-      );
-    } catch (err) {
-      logger.error(
-        { err, productId: product.id },
-        'cleanupSoldProducts: Unexpected error for product'
-      );
-    }
+  if (rpcError) {
+    logger.error({ rpcError }, 'cleanupSoldProducts: auto_remove_sold_products RPC failed');
+    return;
   }
 
+  // Invalidate product caches in parallel
+  const cachePromises = productsToRemove.map((product) =>
+    redis.del(CACHE_KEYS.PRODUCT(product.id))
+  );
+  
   // Invalidate feed caches
-  await redis.del(CACHE_KEYS.TRENDING_FEED);
-  await redis.del(CACHE_KEYS.RECENT_FEED);
+  cachePromises.push(redis.del(CACHE_KEYS.TRENDING_FEED));
+  cachePromises.push(redis.del(CACHE_KEYS.RECENT_FEED));
+
+  await Promise.all(cachePromises);
 
   logger.info(
-    { removed: productsToRemove.length },
+    { removed: count },
     'cleanupSoldProducts: Job complete'
   );
 };

@@ -52,6 +52,8 @@ class ProductRepository {
         id,
         cdn_url,
         storage_url,
+        thumbnail_cdn_url,
+        thumbnail_storage_url,
         display_order,
         is_primary
       ),
@@ -90,6 +92,8 @@ class ProductRepository {
       product_images (
         cdn_url,
         storage_url,
+        thumbnail_cdn_url,
+        thumbnail_storage_url,
         is_primary
       ),
       stores (
@@ -282,7 +286,7 @@ class ProductRepository {
           // Fetch images
           const { data: images } = await this.supabase
             .from('product_images')
-            .select('product_id, cdn_url, storage_url, is_primary')
+            .select('product_id, cdn_url, storage_url, thumbnail_cdn_url, thumbnail_storage_url, is_primary')
             .in('product_id', productIds);
 
           // Fetch stores
@@ -495,7 +499,7 @@ class ProductRepository {
     const { data, error } = await this.supabase
       .from('product_images')
       .insert({ product_id: productId, ...imageData })
-      .select('id, cdn_url, storage_url, display_order, is_primary')
+      .select('id, cdn_url, storage_url, thumbnail_cdn_url, thumbnail_storage_url, display_order, is_primary')
       .single();
 
     if (error) {
@@ -518,7 +522,7 @@ class ProductRepository {
   async findProductImage(imageId, productId) {
     const { data, error } = await this.supabase
       .from('product_images')
-      .select('id, storage_url, cdn_url, is_primary, product_id')
+      .select('id, storage_url, cdn_url, thumbnail_storage_url, thumbnail_cdn_url, is_primary, product_id')
       .eq('id', imageId)
       .eq('product_id', productId)
       .single();

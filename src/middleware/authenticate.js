@@ -27,22 +27,15 @@ const authenticate = async (request, reply) => {
       .maybeSingle();
 
     if (error) {
-      // DB error — don't block auth, log and continue with token data
-      logger.warn(
+      logger.error(
         { error, userId },
-        'DB lookup failed during auth — using token data only'
+        'Database lookup failed during authentication'
       );
-
-      // Use data from token if DB is unavailable
-      request.user = {
-        id: request.user.id,
-        email: request.user.email,
-        username: request.user.username,
-        role: request.user.role,
-        account_status: 'active',
-        email_verified: true,
-      };
-      return;
+      throw new AppError(
+        'Authentication service temporarily unavailable',
+        503,
+        'AUTH_SERVICE_UNAVAILABLE'
+      );
     }
 
     if (!user) {
@@ -117,12 +110,24 @@ const optionalAuthenticate = async (request) => {
 
       // Try to get fresh user data
       if (request.user?.id) {
-        const { data: user } = await request.server.supabase
+        const { data: user, error } = await request.server.supabase
           .from('users')
           .select('id, role, account_status, username')
           .eq('id', request.user.id)
           .eq('is_deleted', false)
           .maybeSingle();
+
+        if (error) {
+          logger.error(
+            { error, userId: request.user.id },
+            'Database lookup failed during optional authentication'
+          );
+          throw new AppError(
+            'Authentication service temporarily unavailable',
+            503,
+            'AUTH_SERVICE_UNAVAILABLE'
+          );
+        }
 
         if (user) {
           request.user = {
@@ -131,12 +136,15 @@ const optionalAuthenticate = async (request) => {
             account_status: user.account_status,
             username: user.username,
           };
+        } else {
+          request.user = null;
         }
       }
     } else {
       request.user = null;
     }
-  } catch {
+  } catch (err) {
+    if (err.isOperational) throw err;
     // Silently fail — guest access continues
     request.user = null;
   }
