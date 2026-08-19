@@ -92,8 +92,8 @@ class BadgeEngine {
   _evaluateBadgeCriteria(badge, stats) {
     switch (badge.code) {
       case 'new_seller':
-        // Automatically assigned to any seller — never revoked
-        return stats.role === 'seller' || stats.role === 'both';
+        // Only assigned to new sellers with no reviews
+        return (stats.role === 'seller' || stats.role === 'both') && stats.total_reviews === 0;
 
       case 'verified_seller':
         return (
@@ -140,7 +140,7 @@ class BadgeEngine {
   // Permanent badges (new_seller) are never revoked
   // ─────────────────────────────────────────
   _isBadgeRevocable(badgeCode) {
-    const nonRevocable = ['new_seller'];
+    const nonRevocable = [];
     return !nonRevocable.includes(badgeCode);
   }
 
