@@ -2,6 +2,7 @@
 
 const AdminRepository = require('./admin.repository');
 const NotificationService = require('../notifications/notification.service');
+const VerificationService = require('../verification/verification.service');
 const { getPaginationParams } = require('../../shared/utils/paginate');
 const { CACHE_KEYS } = require('../../shared/constants/cacheKeys');
 const logger = require('../../shared/utils/logger');
@@ -14,6 +15,7 @@ class AdminService {
     this.redis = redis;
     this.repo = new AdminRepository(supabase);
     this.notificationService = new NotificationService(supabase, redis);
+    this.verificationService = new VerificationService(supabase, redis);
   }
 
   // ─────────────────────────────────────────
@@ -188,6 +190,30 @@ class AdminService {
       offset,
     });
     return { data, pagination: { page, limit, total: count } };
+  }
+
+  // ─────────────────────────────────────────
+  // SELLER VERIFICATION MANAGEMENT
+  // ─────────────────────────────────────────
+  async getPendingVerifications(query) {
+    const { page, limit, offset } = getPaginationParams(query);
+    const { data, count } = await this.verificationService.repo.getPendingSubmissions({
+      status: query.status,
+      limit,
+      offset,
+    });
+    return { data, pagination: { page, limit, total: count } };
+  }
+
+  async reviewVerification(adminId, submissionId, status, rejectionReason, ipAddress, notes) {
+    return this.verificationService.reviewVerification(
+      adminId,
+      submissionId,
+      status,
+      rejectionReason,
+      ipAddress,
+      notes
+    );
   }
 }
 

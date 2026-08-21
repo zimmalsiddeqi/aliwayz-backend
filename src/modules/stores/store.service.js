@@ -5,6 +5,9 @@ const sharp = require("sharp");
 
 const StoreRepository = require("./store.repository");
 const NotificationService = require("../notifications/notification.service");
+const VerificationRepository = require("../verification/verification.repository");
+const ManualVerificationProvider = require("../verification/verificationProvider.manual");
+const VerificationEngine = require("../verification/verificationEngine");
 
 const { createSlug } = require("../../shared/utils/slugify");
 const { getPaginationParams } = require("../../shared/utils/paginate");
@@ -24,6 +27,10 @@ class StoreService {
     this.redis = redis;
     this.repo = new StoreRepository(supabase);
     this.notificationService = new NotificationService(supabase, redis);
+    
+    this.verificationRepo = new VerificationRepository(supabase);
+    const manualProvider = new ManualVerificationProvider(supabase, this.verificationRepo);
+    this.verificationEngine = new VerificationEngine(manualProvider);
   }
 
   // ─────────────────────────────────────────
@@ -35,6 +42,16 @@ class StoreService {
     if (!SELLER_ROLES.includes(userRole)) {
       throw new ForbiddenError(
         "You need a seller account to create a store. Update your role first.",
+      );
+    }
+
+    // Enforce identity verification before store creation
+    const isVerified = await this.verificationEngine.isVerified(userId);
+    if (!isVerified) {
+      await this.verificationRepo.saveStoreDraft(userId, data);
+      throw new ForbiddenError(
+        "Identity verification is required before creating a store. Your draft has been saved. Please complete verification first.",
+        "VERIFICATION_REQUIRED"
       );
     }
 

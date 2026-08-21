@@ -30,6 +30,9 @@ module.exports = {
     QR_GENERATED: 'qr_generated',
     BADGE_EARNED: 'badge_earned',
     REPORT_RESOLVED: 'report_resolved',
+    VERIFICATION_SUBMITTED: 'verification_submitted',
+    VERIFICATION_APPROVED: 'verification_approved',
+    VERIFICATION_REJECTED: 'verification_rejected',
   },
 
   // Account status

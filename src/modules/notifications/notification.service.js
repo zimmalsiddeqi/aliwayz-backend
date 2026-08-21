@@ -37,22 +37,25 @@ class NotificationService {
   // ─────────────────────────────────────────
   // CREATE IN-APP NOTIFICATION + SEND FCM PUSH
   // ─────────────────────────────────────────
-  async createNotification({ userId, type, title, body, data = {} }) {
+  async createNotification({ userId, user_id, type, title, body, data = {} }) {
+    const targetUserId = userId || user_id;
+    const payloadData = data && typeof data === 'object' ? data : {};
+
     // 1. Store in-app notification
     const notification = await this.repo.createNotification({
-      user_id: userId,
+      user_id: targetUserId,
       type,
       title,
       body,
-      data,
+      data: payloadData,
       is_read: false,
       fcm_sent: false,
     });
 
     // 2. Send FCM push notification (async — don't block)
-    this._sendFCMPush(notification.id, userId, title, body, data, type)
+    this._sendFCMPush(notification.id, targetUserId, title, body, payloadData, type)
       .catch((err) =>
-        logger.warn({ err, userId, type }, 'FCM push failed — non-critical')
+        logger.warn({ err, userId: targetUserId, type }, 'FCM push failed — non-critical')
       );
 
     return notification;
@@ -130,10 +133,10 @@ class NotificationService {
   // PRIVATE: Send FCM push notification
   // ─────────────────────────────────────────
   async _sendFCMPush(notificationId, userId, title, body, data, type) {
-    if (!firebaseInitialized) return;
-
     const fcmToken = await this.repo.getUserFCMToken(userId);
     if (!fcmToken) return; // User has no push token (web user or not registered)
+
+    const payloadData = data && typeof data === 'object' ? data : {};
 
     const message = {
       token: fcmToken,
@@ -142,11 +145,11 @@ class NotificationService {
         body,
       },
       data: {
-        type,
-        notification_id: notificationId,
+        type: type || 'general',
+        notification_id: String(notificationId),
         // FCM data must be strings
         ...Object.fromEntries(
-          Object.entries(data).map(([k, v]) => [k, String(v)])
+          Object.entries(payloadData).map(([k, v]) => [k, String(v ?? '')])
         ),
       },
       android: {

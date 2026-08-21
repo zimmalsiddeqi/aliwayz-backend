@@ -215,7 +215,13 @@ class ProductRepository {
       .eq('status', status)
       .eq('is_deleted', false);
 
-    if (categoryId)            query = query.eq('category_id', categoryId);
+    if (categoryId) {
+      if (Array.isArray(categoryId)) {
+        query = query.in('category_id', categoryId);
+      } else {
+        query = query.eq('category_id', categoryId);
+      }
+    }
     if (minPrice !== undefined) query = query.gte('price', minPrice);
     if (maxPrice !== undefined) query = query.lte('price', maxPrice);
     if (condition)             query = query.eq('condition', condition);

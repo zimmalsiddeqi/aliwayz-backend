@@ -2,7 +2,7 @@
 
 const AdminController = require('./admin.controller');
 const { authenticate } = require('../../middleware/authenticate');
-const { requireAdmin } = require('../../middleware/authorize');
+const { requireAdmin, requireVerificationOfficer } = require('../../middleware/authorize');
 const { sanitizeInput } = require('../../middleware/sanitize');
 
 async function adminRoutes(fastify) {
@@ -31,6 +31,16 @@ async function adminRoutes(fastify) {
   fastify.put('/stores/:id/verify', {
     preHandler: [...adminGuard, sanitizeInput],
     handler: ctrl.verifyStore.bind(ctrl),
+  });
+
+  // Seller Verification Management
+  fastify.get('/verifications', {
+    preHandler: adminGuard,
+    handler: ctrl.getPendingVerifications.bind(ctrl),
+  });
+  fastify.put('/verifications/:id', {
+    preHandler: [authenticate, requireVerificationOfficer, sanitizeInput],
+    handler: ctrl.reviewVerification.bind(ctrl),
   });
 
   // Products

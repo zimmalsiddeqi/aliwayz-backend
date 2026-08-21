@@ -202,6 +202,10 @@ const buildApp = async () => {
         prefix: "/badges",
       });
 
+      await api.register(require("./modules/verification/verification.routes"), {
+        prefix: "/verification",
+      });
+
       await api.register(require("./modules/admin/admin.routes"), {
         prefix: "/admin",
       });

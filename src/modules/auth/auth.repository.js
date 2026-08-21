@@ -14,7 +14,7 @@ class AuthRepository {
     const { data, error } = await this.supabase
       .from('users')
       .select(
-        'id, email, username, full_name, avatar_url, role, account_status, email_verified, phone_verified, auth_provider, supabase_uid, fcm_token'
+        'id, email, username, full_name, avatar_url, role, account_status, email_verified, phone_verified, auth_provider, supabase_uid, fcm_token, seller_verification_status'
       )
       .eq('email', email)
       .eq('is_deleted', false)
@@ -35,7 +35,7 @@ class AuthRepository {
     const { data, error } = await this.supabase
       .from('users')
       .select(
-        'id, email, username, full_name, avatar_url, role, account_status, email_verified, phone_verified, auth_provider, supabase_uid'
+        'id, email, username, full_name, avatar_url, role, account_status, email_verified, phone_verified, auth_provider, supabase_uid, seller_verification_status'
       )
       .eq('id', id)
       .eq('is_deleted', false)

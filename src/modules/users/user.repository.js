@@ -30,6 +30,7 @@ class UserRepository {
         location_lat,
         location_lng,
         fcm_token,
+        seller_verification_status,
         last_active_at,
         created_at,
         seller_stats (

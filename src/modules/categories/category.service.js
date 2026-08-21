@@ -71,14 +71,31 @@ class CategoryService {
 
     const { page, limit, offset } = getPaginationParams(query);
 
+    // Resolve all subcategories recursively (Levels 1, 2, and 3)
+    const allCategories = await this.getAllCategoriesFlat();
+    const getDescendants = (parentId) => {
+      let ids = [];
+      const children = allCategories.filter((c) => c.parent_id === parentId);
+      for (const child of children) {
+        ids.push(child.id);
+        ids = ids.concat(getDescendants(child.id));
+      }
+      return ids;
+    };
+    const categoryIds = [category.id, ...getDescendants(category.id)];
+
     const { data, count } = await this.productRepo.browseProducts({
       limit,
       offset,
-      categoryId: category.id,
+      categoryId: categoryIds,
       minPrice: query.min_price ? parseFloat(query.min_price) : undefined,
       maxPrice: query.max_price ? parseFloat(query.max_price) : undefined,
       condition: query.condition,
       sort: query.sort || 'newest',
+      city: query.city || undefined,
+      lat: query.lat || undefined,
+      lng: query.lng || undefined,
+      radiusKm: query.radius_km || undefined,
     });
 
     return {

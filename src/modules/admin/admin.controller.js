@@ -10,6 +10,7 @@ const {
   broadcastNotificationSchema,
   deleteProductSchema,
 } = require('./admin.schema');
+const { reviewVerificationSchema } = require('../verification/verification.schema');
 
 class AdminController {
   constructor(fastify) {
@@ -129,6 +130,26 @@ class AdminController {
   async getAdminLogs(request, reply) {
     const result = await this.adminService.getAdminLogs(request.query);
     return reply.send(paginatedResponse(result.data, result.pagination));
+  }
+
+  // GET /admin/verifications
+  async getPendingVerifications(request, reply) {
+    const result = await this.adminService.getPendingVerifications(request.query);
+    return reply.send(paginatedResponse(result.data, result.pagination));
+  }
+
+  // PUT /admin/verifications/:id
+  async reviewVerification(request, reply) {
+    const data = this._validate(reviewVerificationSchema, request.body);
+    const result = await this.adminService.reviewVerification(
+      request.user.id,
+      request.params.id,
+      data.status,
+      data.rejection_reason,
+      request.ip,
+      data.notes
+    );
+    return reply.send(successResponse(result, `Verification request ${data.status}`));
   }
 }
 

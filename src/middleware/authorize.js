@@ -68,4 +68,23 @@ const requireAdmin = async (request) => {
   }
 };
 
-module.exports = { authorize, requireSeller, requireBuyer, requireAdmin };
+/**
+ * Checks if user is authorized to perform verification reviews
+ */
+const requireVerificationOfficer = async (request) => {
+  await requireAdmin(request);
+  
+  // Custom metadata/claim check. In a production scenario, we can inspect a claims object or metadata.
+  // For backward compatibility, any admin is allowed unless explicitly disabled (can_verify_sellers === false)
+  if (request.user.can_verify_sellers === false) {
+    throw new ForbiddenError('Access denied. Verification review privileges required.');
+  }
+};
+
+module.exports = {
+  authorize,
+  requireSeller,
+  requireBuyer,
+  requireAdmin,
+  requireVerificationOfficer,
+};
