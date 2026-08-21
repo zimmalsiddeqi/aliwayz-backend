@@ -140,6 +140,21 @@ class ReviewRepository {
   // Get store reviews (buyer reviews only)
   // ─────────────────────────────────────────
   async getStoreReviews(storeId, { limit, offset }) {
+    // 1. Fetch store owner's user ID
+    const { data: store, error: storeError } = await this.supabase
+      .from('stores')
+      .select('user_id')
+      .eq('id', storeId)
+      .single();
+
+    if (storeError || !store) {
+      logger.error({ error: storeError, storeId }, 'getStoreReviews failed to find store');
+      throw storeError || new Error('Store not found');
+    }
+
+    const ownerId = store.user_id;
+
+    // 2. Fetch all reviews received by the store owner as a seller
     const { data, error, count } = await this.supabase
       .from('reviews')
       .select(
@@ -158,16 +173,15 @@ class ReviewRepository {
           username,
           avatar_url
         ),
-        products!inner (
+        products (
           id,
           title,
-          slug,
-          store_id
+          slug
         )
       `,
         { count: 'exact' }
       )
-      .eq('products.store_id', storeId)
+      .eq('reviewee_id', ownerId)
       .eq('reviewer_type', 'buyer')
       .eq('is_visible', true)
       .order('created_at', { ascending: false })
