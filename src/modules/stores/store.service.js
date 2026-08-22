@@ -45,15 +45,15 @@ class StoreService {
       );
     }
 
-    // Enforce identity verification before store creation
-    const isVerified = await this.verificationEngine.isVerified(userId);
-    if (!isVerified) {
-      await this.verificationRepo.saveStoreDraft(userId, data);
-      throw new ForbiddenError(
-        "Identity verification is required before creating a store. Your draft has been saved. Please complete verification first.",
-        "VERIFICATION_REQUIRED"
-      );
+    // Clean up store draft if one exists
+    try {
+      await this.verificationRepo.deleteStoreDraft(userId);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Failed to delete store draft upon store creation');
     }
+
+    // Determine initial verification status based on user verification status
+    const isVerified = await this.verificationEngine.isVerified(userId);
 
     // Enforce one store per user
     const existingStore = await this.repo.findStoreByUserId(userId);
@@ -79,6 +79,7 @@ class StoreService {
       social_instagram: data.social_instagram || null,
       social_facebook: data.social_facebook || null,
       social_tiktok: data.social_tiktok || null,
+      is_verified: isVerified,
     });
 
     logger.info({ userId, storeId: store.id }, "Store created");

@@ -154,7 +154,7 @@ class VerificationRepository {
         logo_url: draftData.logo_url || null,
         banner_url: draftData.banner_url || null,
         updated_at: new Date().toISOString(),
-      })
+      }, { onConflict: 'user_id' })
       .select('*')
       .single();
 
