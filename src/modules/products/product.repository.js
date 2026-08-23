@@ -216,11 +216,19 @@ class ProductRepository {
       .eq('is_deleted', false);
 
     if (categoryId) {
-      if (Array.isArray(categoryId)) {
-        query = query.in('category_id', categoryId);
-      } else {
-        query = query.eq('category_id', categoryId);
+      let categoryIds = Array.isArray(categoryId) ? categoryId : [categoryId];
+      
+      // Fetch sub-category IDs if the category is a parent
+      const { data: subCats } = await this.supabase
+        .from('categories')
+        .select('id')
+        .in('parent_id', categoryIds);
+
+      if (subCats && subCats.length > 0) {
+        categoryIds = [...categoryIds, ...subCats.map((sc) => sc.id)];
       }
+
+      query = query.in('category_id', categoryIds);
     }
     if (minPrice !== undefined) query = query.gte('price', minPrice);
     if (maxPrice !== undefined) query = query.lte('price', maxPrice);
