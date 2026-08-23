@@ -218,14 +218,25 @@ class ProductRepository {
     if (categoryId) {
       let categoryIds = Array.isArray(categoryId) ? categoryId : [categoryId];
       
-      // Fetch sub-category IDs if the category is a parent
-      const { data: subCats } = await this.supabase
+      // Fetch Level 2 sub-category IDs
+      const { data: level2 } = await this.supabase
         .from('categories')
         .select('id')
         .in('parent_id', categoryIds);
 
-      if (subCats && subCats.length > 0) {
-        categoryIds = [...categoryIds, ...subCats.map((sc) => sc.id)];
+      if (level2 && level2.length > 0) {
+        const level2Ids = level2.map((sc) => sc.id);
+        categoryIds = [...categoryIds, ...level2Ids];
+
+        // Fetch Level 3 sub-subcategory IDs
+        const { data: level3 } = await this.supabase
+          .from('categories')
+          .select('id')
+          .in('parent_id', level2Ids);
+
+        if (level3 && level3.length > 0) {
+          categoryIds = [...categoryIds, ...level3.map((sc) => sc.id)];
+        }
       }
 
       query = query.in('category_id', categoryIds);
