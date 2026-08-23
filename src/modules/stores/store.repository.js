@@ -366,6 +366,22 @@ class StoreRepository {
       logger.error({ error }, 'softDeleteStore failed');
       throw error;
     }
+
+    // Cascade: Hard delete all products and associated images/videos/favorites/reviews completely from database
+    const { data: storeProducts } = await this.supabase
+      .from('products')
+      .select('id')
+      .eq('store_id', storeId);
+
+    const productIds = storeProducts?.map(p => p.id) || [];
+
+    if (productIds.length > 0) {
+      await this.supabase.from('product_images').delete().in('product_id', productIds);
+      await this.supabase.from('product_videos').delete().in('product_id', productIds);
+      await this.supabase.from('favorites').delete().in('product_id', productIds);
+      await this.supabase.from('reviews').delete().in('product_id', productIds);
+      await this.supabase.from('products').delete().in('id', productIds);
+    }
   }
 }
 

@@ -45,9 +45,13 @@ BEGIN
         updated_at = NOW()
     WHERE id = p_verification_id;
 
-    -- 4. Update users verification status
+    -- 4. Update users verification status and role
     UPDATE users
     SET seller_verification_status = v_new_status,
+        role = CASE 
+            WHEN p_status = 'approved' AND role IN ('buyer', 'guest') THEN 'both'::varchar
+            ELSE role 
+        END,
         updated_at = NOW()
     WHERE id = v_user_id;
 

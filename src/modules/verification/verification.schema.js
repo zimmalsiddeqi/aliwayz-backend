@@ -50,8 +50,8 @@ const reviewVerificationSchema = z
         message: 'Status must be: approved or rejected',
       }),
     }),
-    rejection_reason: z.string().max(500).optional(),
-    notes: z.string().max(1000).optional(),
+    rejection_reason: z.string().max(500).nullable().optional(),
+    notes: z.string().max(1000).nullable().optional(),
   })
   .refine(
     (data) => {

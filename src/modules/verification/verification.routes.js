@@ -13,14 +13,14 @@ async function verificationRoutes(fastify) {
 
   // Status check
   fastify.get('/status', {
-    preHandler: [authenticate, requireSeller],
+    preHandler: [authenticate],
     handler: getStatus,
   });
 
   // Submit documents (max 3 submissions per 24 hours)
   fastify.post('/submit', {
     config: { rateLimit: { max: 3, timeWindow: '24h' } },
-    preHandler: [authenticate, requireSeller],
+    preHandler: [authenticate],
     handler: submitVerification,
   });
 }

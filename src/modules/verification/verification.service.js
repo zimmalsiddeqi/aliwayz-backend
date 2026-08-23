@@ -127,33 +127,37 @@ class VerificationService {
       throw new AppError('Failed to complete verification review transaction', 500);
     }
 
+    const txResult = Array.isArray(data) ? data[0] : data;
+
     // Post-Commit Notifications
     try {
-      const userId = data.user_id;
-      if (status === 'approved') {
-        const template = VERIFICATION_TEMPLATES.APPROVED;
-        await this.notificationService.createNotification({
-          userId,
-          type: template.type,
-          title: template.title,
-          body: template.body,
-          data: { verificationId: submissionId, storeId: data.store_id || null },
-        });
-      } else {
-        const template = VERIFICATION_TEMPLATES.REJECTED;
-        await this.notificationService.createNotification({
-          userId,
-          type: template.type,
-          title: template.title,
-          body: template.body(rejectionReason),
-          data: { verificationId: submissionId, reason: rejectionReason },
-        });
+      const userId = txResult?.user_id;
+      if (userId) {
+        if (status === 'approved') {
+          const template = VERIFICATION_TEMPLATES.APPROVED;
+          await this.notificationService.createNotification({
+            userId,
+            type: template.type,
+            title: template.title,
+            body: template.body,
+            data: { verificationId: submissionId, storeId: txResult.store_id || null },
+          });
+        } else {
+          const template = VERIFICATION_TEMPLATES.REJECTED;
+          await this.notificationService.createNotification({
+            userId,
+            type: template.type,
+            title: template.title,
+            body: template.body(rejectionReason),
+            data: { verificationId: submissionId, reason: rejectionReason },
+          });
+        }
       }
     } catch (err) {
       logger.warn({ err, submissionId }, 'Verification review notification failed');
     }
 
-    return data;
+    return txResult;
   }
 }
 

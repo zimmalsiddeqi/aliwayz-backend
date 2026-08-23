@@ -299,28 +299,58 @@ class UserRepository {
   }
 
   // ─────────────────────────────────────────
-  // Soft delete user account
   // ─────────────────────────────────────────
-  async softDeleteUser(userId) {
+  // Hard delete user account and all cascade data completely from database
+  // ─────────────────────────────────────────
+  async hardDeleteUser(userId) {
+    // Get store IDs owned by the user to cascade delete store products and followers
+    const { data: userStores } = await this.supabase
+      .from('stores')
+      .select('id')
+      .eq('user_id', userId);
+
+    const storeIds = userStores?.map(s => s.id) || [];
+
+    // 1. Delete products, product images, videos, reviews, and favorites
+    const { data: userProducts } = await this.supabase
+      .from('products')
+      .select('id')
+      .eq('seller_id', userId);
+
+    const productIds = userProducts?.map(p => p.id) || [];
+
+    if (productIds.length > 0) {
+      await this.supabase.from('product_images').delete().in('product_id', productIds);
+      await this.supabase.from('product_videos').delete().in('product_id', productIds);
+      await this.supabase.from('favorites').delete().in('product_id', productIds);
+      await this.supabase.from('reviews').delete().in('product_id', productIds);
+      await this.supabase.from('products').delete().in('id', productIds);
+    }
+
+    // 2. Delete store followers for user's stores, or where the user is a follower
+    if (storeIds.length > 0) {
+      await this.supabase.from('store_followers').delete().in('store_id', storeIds);
+      await this.supabase.from('stores').delete().in('id', storeIds);
+    }
+    await this.supabase.from('store_followers').delete().eq('follower_id', userId);
+
+    // 3. Delete other user-related tables
+    await this.supabase.from('store_drafts').delete().eq('user_id', userId);
+    await this.supabase.from('seller_verifications').delete().eq('user_id', userId);
+    await this.supabase.from('favorites').delete().eq('user_id', userId);
+    await this.supabase.from('notifications').delete().eq('user_id', userId);
+    await this.supabase.from('reviews').delete().eq('user_id', userId);
+    await this.supabase.from('user_badges').delete().eq('user_id', userId);
+    await this.supabase.from('seller_stats').delete().eq('user_id', userId);
+
+    // 4. Finally delete the user record from database
     const { error } = await this.supabase
       .from('users')
-      .update({
-        is_deleted: true,
-        deleted_at: new Date().toISOString(),
-        // Anonymize PII
-        email: `deleted_${userId}@deleted.invalid`,
-        username: `deleted_${userId.substring(0, 8)}`,
-        full_name: null,
-        bio: null,
-        phone: null,
-        avatar_url: null,
-        fcm_token: null,
-        updated_at: new Date().toISOString(),
-      })
+      .delete()
       .eq('id', userId);
 
     if (error) {
-      logger.error({ error }, 'softDeleteUser failed');
+      logger.error({ error }, 'hardDeleteUser failed');
       throw error;
     }
   }

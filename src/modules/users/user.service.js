@@ -253,14 +253,31 @@ class UserService {
     // Revoke all auth tokens
     await this.authRepo.revokeAllUserRefreshTokens(userId);
 
-    // Soft delete (anonymize PII)
-    await this.repo.softDeleteUser(userId);
+    // Retrieve supabase_uid first
+    const { data: user } = await this.supabase
+      .from('users')
+      .select('supabase_uid')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const supabaseUid = user?.supabase_uid;
+
+    // Hard delete user record and all cascade tables from DB
+    await this.repo.hardDeleteUser(userId);
+
+    // Delete user from Supabase Auth completely using supabase_uid
+    if (supabaseUid) {
+      const { error: authError } = await this.supabase.auth.admin.deleteUser(supabaseUid);
+      if (authError) {
+        logger.error({ error: authError, supabaseUid }, 'Failed to delete user from Supabase Auth');
+      }
+    }
 
     // Invalidate all caches
     await this.redis.del(CACHE_KEYS.USER_PROFILE(username));
     await this.redis.del(CACHE_KEYS.USER_BADGES(userId));
 
-    logger.info({ userId }, 'User account deleted');
+    logger.info({ userId }, 'User account hard-deleted successfully');
 
     return { message: 'Account deleted successfully' };
   }
