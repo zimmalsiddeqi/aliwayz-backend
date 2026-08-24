@@ -77,7 +77,7 @@ class FavoriteRepository {
         `
         id,
         created_at,
-        product:product_id (
+        products (
           id,
           title,
           slug,
@@ -121,7 +121,7 @@ class FavoriteRepository {
 
     // Filter out deleted/unavailable products
     const filteredData = (data || []).filter(
-      (f) => f.product && !f.product.is_deleted
+      (f) => f.products && !f.products.is_deleted
     );
 
     return { data: filteredData, count: count || 0 };
