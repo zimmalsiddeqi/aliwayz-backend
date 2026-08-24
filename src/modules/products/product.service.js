@@ -596,7 +596,7 @@ class ProductService {
 
     const alreadyFavorited = await this.repo.isProductFavorited(userId, productId);
     if (alreadyFavorited) {
-      throw new AppError('Product already in favorites', 409, 'ALREADY_FAVORITED');
+      return { message: 'Already in favorites' };
     }
 
     await this.repo.addFavorite(userId, productId);
