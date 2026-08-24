@@ -85,6 +85,7 @@ class FavoriteRepository {
           currency,
           condition,
           status,
+          is_deleted,
           location_city,
           view_count,
           favorite_count,
