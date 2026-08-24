@@ -6,17 +6,6 @@ const { authenticate, optionalAuthenticate } = require('../../middleware/authent
 async function favoriteRoutes(fastify) {
   const ctrl = new FavoriteController(fastify);
 
-  // GET /favorites/debug — debug database contents
-  fastify.get('/debug', async (request, reply) => {
-    const { data: favs, error: favsErr } = await fastify.supabase.from('favorites').select('*');
-    const { data: users, error: usersErr } = await fastify.supabase.from('users').select('id, username').limit(5);
-    return reply.send({
-      supabaseUrl: process.env.SUPABASE_URL,
-      favorites: { count: favs?.length, data: favs, error: favsErr },
-      users: { count: users?.length, data: users, error: usersErr }
-    });
-  });
-
   // POST /favorites/:productId — add to favorites
   fastify.post('/:productId', {
     config: { rateLimit: { max: 60, timeWindow: '1m' } },
