@@ -14,47 +14,87 @@ async function redisPlugin(fastify) {
     keyPrefix: redisConfig.keyPrefix,
     enableReadyCheck: true,
     maxRetriesPerRequest: 3,
-    connectTimeout: 10000,
-    lazyConnect: true, // Don't auto-connect — we control it
+    connectTimeout: 5000, // shorter timeout for faster fallback
     retryStrategy: (times) => {
       if (times > 3) {
-        return null; // Stop retrying after 3 attempts on startup
+        return null; // Stop retrying after 3 attempts
       }
       return Math.min(times * 200, 2000);
     },
   });
 
-  // ─────────────────────────────────────────
-  // Attempt connection with clear error message
-  // ─────────────────────────────────────────
-  try {
-    await redis.connect();
-    const pong = await redis.ping();
-
-    if (pong !== 'PONG') {
-      throw new Error('Redis ping returned unexpected response');
-    }
-
-    logger.info('✅ Redis connected successfully');
-  } catch (err) {
-    logger.error(
-      { err: err.message },
-      '❌ Redis connection FAILED. Is Redis running?\n' +
-      '   → Run: docker run -d --name marketplace-redis -p 6379:6379 redis:7-alpine\n' +
-      '   → Or:  docker-compose up -d redis'
-    );
-    throw new Error(
-      'Redis connection failed — start Redis before running the server'
-    );
-  }
+  let useFallback = true; // Default to fallback until connected
 
   redis.on('error', (err) => {
-    logger.error({ err: err.message }, 'Redis runtime error');
+    if (!useFallback) {
+      logger.warn(
+        { err: err.message },
+        '⚠️ Redis connection/runtime error. Falling back to IN-MEMORY cache.'
+      );
+      useFallback = true;
+    }
+  });
+
+  redis.on('ready', () => {
+    logger.info('✅ Redis connected successfully and ready');
+    useFallback = false;
   });
 
   redis.on('reconnecting', () => {
     logger.warn('Redis reconnecting...');
   });
+
+  // ─────────────────────────────────────────
+  // In-Memory Fallback Cache Implementation
+  // ─────────────────────────────────────────
+  const memoryCache = new Map();
+  const fallbackCache = {
+    async get(key) {
+      const entry = memoryCache.get(key);
+      if (!entry) return null;
+      if (entry.expiry && entry.expiry < Date.now()) {
+        memoryCache.delete(key);
+        return null;
+      }
+      return entry.value;
+    },
+
+    async set(key, value, ttlSeconds = null) {
+      const expiry = ttlSeconds ? Date.now() + ttlSeconds * 1000 : null;
+      memoryCache.set(key, { value, expiry });
+    },
+
+    async del(...keys) {
+      keys.forEach((k) => memoryCache.delete(k));
+    },
+
+    async getdel(key) {
+      const val = await this.get(key);
+      memoryCache.delete(key);
+      return val;
+    },
+
+    async exists(key) {
+      const val = await this.get(key);
+      return val !== null;
+    },
+
+    async incr(key, ttlSeconds = null) {
+      const val = (await this.get(key)) || 0;
+      const newVal = val + 1;
+      await this.set(key, newVal, ttlSeconds);
+      return newVal;
+    },
+
+    async setnx(key, value, ttlSeconds) {
+      const exists = await this.exists(key);
+      if (exists) return false;
+      await this.set(key, value, ttlSeconds);
+      return true;
+    },
+
+    client: null,
+  };
 
   // ─────────────────────────────────────────
   // Cache wrapper with JSON serialization
@@ -147,7 +187,25 @@ async function redisPlugin(fastify) {
     client: redis,
   };
 
-  fastify.decorate('redis', cache);
+  // ─────────────────────────────────────────
+  // Dynamic Cache Router (checks useFallback)
+  // ─────────────────────────────────────────
+  const dynamicCache = {
+    get: (key) => (useFallback ? fallbackCache.get(key) : cache.get(key)),
+    set: (key, value, ttl) =>
+      useFallback ? fallbackCache.set(key, value, ttl) : cache.set(key, value, ttl),
+    del: (...keys) =>
+      useFallback ? fallbackCache.del(...keys) : cache.del(...keys),
+    getdel: (key) => (useFallback ? fallbackCache.getdel(key) : cache.getdel(key)),
+    exists: (key) => (useFallback ? fallbackCache.exists(key) : cache.exists(key)),
+    incr: (key, ttl) =>
+      useFallback ? fallbackCache.incr(key, ttl) : cache.incr(key, ttl),
+    setnx: (key, value, ttl) =>
+      useFallback ? fallbackCache.setnx(key, value, ttl) : cache.setnx(key, value, ttl),
+    client: redis,
+  };
+
+  fastify.decorate('redis', dynamicCache);
   fastify.decorate('redisClient', redis);
 
   fastify.addHook('onClose', async () => {
