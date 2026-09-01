@@ -180,6 +180,7 @@ class StoreRepository {
         currency,
         condition,
         status,
+        category_id,
         location_city,
         view_count,
         favorite_count,
