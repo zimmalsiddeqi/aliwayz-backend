@@ -337,6 +337,34 @@ class QRService {
       conversationId: payload.conversationId
     });
 
+    // ── Decrement quantity & set status to sold if out of stock ──────
+    const { data: currentProduct } = await this.supabase
+      .from('products')
+      .select('id, quantity, status')
+      .eq('id', payload.productId)
+      .single();
+
+    if (currentProduct) {
+      const currentQty = typeof currentProduct.quantity === 'number' ? currentProduct.quantity : 1;
+      const newQty = Math.max(0, currentQty - 1);
+      const productUpdates = {
+        quantity: newQty,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (newQty <= 0) {
+        productUpdates.status = PRODUCT_STATUS.SOLD;
+        productUpdates.sold_at = new Date().toISOString();
+      } else {
+        productUpdates.status = PRODUCT_STATUS.AVAILABLE;
+      }
+
+      await this.supabase
+        .from('products')
+        .update(productUpdates)
+        .eq('id', payload.productId);
+    }
+
     // ── Update conversation last message ─────────────────────
     await this.supabase
       .from('conversations')
