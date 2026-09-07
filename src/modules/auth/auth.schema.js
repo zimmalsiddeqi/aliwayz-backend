@@ -62,10 +62,17 @@ const googleOAuthSchema = z.object({
 
 
 const appleOAuthSchema = z.object({
-  identity_token: z.string().min(1, 'Apple identity token is required'),
-  full_name: z.string().max(100).optional(),
-  role: z.enum(['buyer', 'seller', 'both']).default('buyer'),
-});
+  identity_token: z.string().min(1).optional(),
+  id_token:       z.string().min(1).optional(),
+  token:          z.string().min(1).optional(),
+  code:           z.string().min(1).optional(),
+  user:           z.any().optional(),
+  full_name:      z.string().max(100).optional(),
+  role:           z.enum(['buyer', 'seller', 'both']).default('buyer'),
+}).refine(
+  (d) => d.identity_token || d.id_token || d.token || d.code,
+  { message: 'Apple token (id_token or identity_token) is required' }
+);
 
 const verifyEmailSchema = z.object({
   token: z.string().min(1, 'Verification token is required'),

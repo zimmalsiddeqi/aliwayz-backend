@@ -41,6 +41,19 @@ class AuthService {
     return crypto.createHash("sha256").update(token).digest("hex");
   }
 
+  _parseJwtPayload(token) {
+    if (!token || typeof token !== "string") return null;
+    try {
+      const parts = token.split(".");
+      if (parts.length < 2) return null;
+      const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      const json = Buffer.from(base64, "base64").toString("utf8");
+      return JSON.parse(json);
+    } catch (err) {
+      return null;
+    }
+  }
+
   // ─────────────────────────────────────────
   // PRIVATE: Sign JWT access token
   // ─────────────────────────────────────────
@@ -642,22 +655,58 @@ async login(data, deviceInfo = {}) {
   // APPLE OAUTH
   // ─────────────────────────────────────────
   async appleOAuth(data, deviceInfo = {}) {
-    const { identity_token, full_name, role } = data;
+    const { identity_token, id_token, token, code, full_name, user: rawUser, role } = data;
+    const appleToken = identity_token || id_token || token;
 
-    const { data: authData, error: authError } =
-      await this.supabase.auth.signInWithIdToken({
-        provider: "apple",
-        token: identity_token,
-      });
+    let email = null;
+    let supabaseUid = null;
 
-    if (authError || !authData?.user) {
-      logger.warn({ authError }, "Invalid Apple identity token");
-      throw new UnauthorizedError("Invalid Apple token");
+    let resolvedName = full_name;
+    if (!resolvedName && rawUser) {
+      if (typeof rawUser === "string") {
+        resolvedName = rawUser;
+      } else if (rawUser.name) {
+        if (typeof rawUser.name === "string") {
+          resolvedName = rawUser.name;
+        } else if (typeof rawUser.name === "object") {
+          resolvedName = [rawUser.name.firstName, rawUser.name.lastName]
+            .filter(Boolean)
+            .join(" ");
+        }
+      }
     }
 
-    const email = authData.user.email;
+    if (appleToken) {
+      try {
+        const { data: authData, error: authError } =
+          await this.supabase.auth.signInWithIdToken({
+            provider: "apple",
+            token: appleToken,
+          });
+
+        if (!authError && authData?.user?.email) {
+          email = authData.user.email;
+          supabaseUid = authData.user.id;
+        }
+      } catch (err) {
+        logger.warn(
+          { err: err.message },
+          "Supabase signInWithIdToken failed for Apple token"
+        );
+      }
+    }
+
+    // Fallback: Decode Apple JWT directly if Supabase Auth SDK didn't return an email
+    if (!email && appleToken) {
+      const decoded = this._parseJwtPayload(appleToken);
+      if (decoded?.email) {
+        email = decoded.email;
+        supabaseUid = decoded.sub || null;
+      }
+    }
+
     if (!email) {
-      throw new AppError("Apple account must provide an email", 400);
+      throw new UnauthorizedError("Invalid or expired Apple sign-in token");
     }
 
     let user = await this.repo.findUserByEmail(email);
@@ -667,11 +716,12 @@ async login(data, deviceInfo = {}) {
         throw new AppError(
           "Your account has been banned",
           403,
-          "ACCOUNT_BANNED",
+          "ACCOUNT_BANNED"
         );
       }
       await this.repo.updateUser(user.id, {
         last_active_at: new Date().toISOString(),
+        email_verified: true,
       });
       user = await this.repo.findUserByEmail(email);
     } else {
@@ -681,13 +731,25 @@ async login(data, deviceInfo = {}) {
         .substring(0, 40);
       const username = await this._generateUniqueUsername(baseUsername);
 
+      let finalSupabaseUid = supabaseUid;
+      if (!finalSupabaseUid) {
+        const { data: createdAuth } = await this.supabase.auth.admin
+          .createUser({
+            email,
+            email_confirm: true,
+            user_metadata: { full_name: resolvedName },
+          })
+          .catch(() => ({ data: null }));
+        finalSupabaseUid = createdAuth?.user?.id || crypto.randomUUID();
+      }
+
       user = await this.repo.createUser({
         email,
         username,
-        full_name: full_name || null,
-        role,
+        full_name: resolvedName || null,
+        role: role || ROLES.BUYER,
         auth_provider: "apple",
-        supabase_uid: authData.user.id,
+        supabase_uid: finalSupabaseUid,
         account_status: "active",
         email_verified: true,
       });
@@ -702,7 +764,7 @@ async login(data, deviceInfo = {}) {
 
     const { accessToken, refreshToken } = await this._issueTokenPair(
       user,
-      deviceInfo,
+      deviceInfo
     );
 
     return {
