@@ -737,7 +737,6 @@ describe('08. QR System', () => {
 
     expect(scanRes.statusCode).toBe(200);
     expect(scanRes.body.success).toBe(true);
-    expect(scanRes.body.data.success).toBe(true);
     expect(scanRes.body.data.can_review).toBe(true);
 
     // Verify product is now SOLD

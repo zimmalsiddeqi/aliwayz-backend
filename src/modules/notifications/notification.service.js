@@ -52,6 +52,10 @@ class NotificationService {
       fcm_sent: false,
     });
 
+    if (!notification || !notification.id) {
+      return notification || null;
+    }
+
     // 2. Send FCM push notification (async — don't block)
     this._sendFCMPush(notification.id, targetUserId, title, body, payloadData, type)
       .catch((err) =>

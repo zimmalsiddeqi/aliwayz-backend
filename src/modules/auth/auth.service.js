@@ -1045,6 +1045,20 @@ async login(data, deviceInfo = {}) {
   }
 
   // ─────────────────────────────────────────
+  // GET USER ACTIVE DEVICE SESSIONS
+  // ─────────────────────────────────────────
+  async getUserDevices(userId) {
+    return this.repo.getUserSessions(userId);
+  }
+
+  // ─────────────────────────────────────────
+  // REVOKE SPECIFIC DEVICE SESSION
+  // ─────────────────────────────────────────
+  async revokeDevice(userId, sessionId) {
+    return this.repo.revokeSessionById(userId, sessionId);
+  }
+
+  // ─────────────────────────────────────────
   // PRIVATE: Generate unique username
   // ─────────────────────────────────────────
   async _generateUniqueUsername(base) {

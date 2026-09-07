@@ -1,6 +1,7 @@
 'use strict';
 
 const ChatService = require('./chat.service');
+const NotificationService = require('../notifications/notification.service');
 const { CACHE_KEYS, CACHE_TTL } = require('../../shared/constants/cacheKeys');
 const logger = require('../../shared/utils/logger');
 
@@ -11,6 +12,7 @@ class ChatGateway {
     this.redis = redis;
     this.fastify = fastify;
     this.chatService = new ChatService(supabase, redis);
+    this.notificationService = new NotificationService(supabase, redis);
   }
 
   // ─────────────────────────────────────────
@@ -21,7 +23,8 @@ class ChatGateway {
     this.io.use(async (socket, next) => {
       try {
         const token =
-          socket.handshake.auth.token ||
+          socket.handshake.auth?.token ||
+          socket.handshake.query?.token ||
           socket.handshake.headers.authorization?.split(' ')[1];
 
         if (!token) {
@@ -234,12 +237,73 @@ class ChatGateway {
         { userId: socket.user.id, conversationId, messageId: message.id },
         'Message sent via socket'
       );
+
+      // Trigger automatic FCM push notification fallback for offline/background participants
+      this._sendFCMPushFallback(conversationId, message, socket.user, data.tempId).catch(
+        (err) => logger.warn({ err, conversationId }, 'FCM push fallback failed')
+      );
     } catch (err) {
       logger.error({ err }, 'handleSendMessage failed');
       socket.emit('message_error', {
         tempId: data?.tempId,
         error:  err.message || 'Failed to send message',
       });
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // PRIVATE: FCM Push Notification Fallback for Chat
+  // ─────────────────────────────────────────
+  async _sendFCMPushFallback(conversationId, message, senderUser, tempId = '') {
+    try {
+      // 1. Get active room members from Redis
+      const activeMembers = await this.redis.smembers(
+        `conv:members:${conversationId}`
+      );
+
+      // 2. Lookup conversation to find participants
+      const conversation = await this.chatService['repo'].findConversationById(
+        conversationId
+      );
+
+      if (!conversation) return;
+
+      const recipientId =
+        conversation.buyer_id === senderUser.id
+          ? conversation.seller_id
+          : conversation.buyer_id;
+
+      if (!recipientId) return;
+
+      // 3. If recipient is active in the room right now, skip FCM push
+      if (Array.isArray(activeMembers) && activeMembers.includes(recipientId)) {
+        return;
+      }
+
+      // 4. Send FCM push notification asynchronously
+      await this.notificationService.createNotification({
+        userId: recipientId,
+        type: 'chat_message',
+        title: senderUser.username || 'New message',
+        body:
+          message.content.length > 100
+            ? message.content.substring(0, 97) + '...'
+            : message.content,
+        data: {
+          conversation_id: conversationId,
+          message_id: message.id,
+          temp_id: tempId || '',
+          sender_id: senderUser.id,
+          sender_username: senderUser.username || '',
+        },
+      });
+
+      logger.info(
+        { recipientId, conversationId, messageId: message.id },
+        'FCM chat push fallback dispatched'
+      );
+    } catch (err) {
+      logger.warn({ err, conversationId }, 'Failed to dispatch FCM chat fallback');
     }
   }
 

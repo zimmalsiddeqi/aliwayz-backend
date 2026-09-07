@@ -190,6 +190,25 @@ class AuthController {
     const result = await this.authService.completeProfile(request.user.id, data);
     return reply.send(successResponse(result, 'Profile completed'));
   }
+
+  // ─────────────────────────────────────────
+  // GET /auth/devices
+  // ─────────────────────────────────────────
+  async getDevices(request, reply) {
+    const devices = await this.authService.getUserDevices(request.user.id);
+    return reply.send(successResponse(devices));
+  }
+
+  // ─────────────────────────────────────────
+  // DELETE /auth/devices/:id
+  // ─────────────────────────────────────────
+  async revokeDevice(request, reply) {
+    const result = await this.authService.revokeDevice(
+      request.user.id,
+      request.params.id
+    );
+    return reply.send(successResponse(result));
+  }
 }
 
 module.exports = AuthController;

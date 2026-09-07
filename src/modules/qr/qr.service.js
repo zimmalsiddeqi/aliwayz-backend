@@ -420,6 +420,7 @@ class QRService {
     );
 
     return {
+      success: true,
       transaction_id: qrTransactionId,
       product: {
         id:       product.id,
@@ -429,6 +430,7 @@ class QRService {
       },
       seller_id: payload.sellerId,
       buyer_id: payload.buyerId,
+      can_review: true,
     };
   }
 

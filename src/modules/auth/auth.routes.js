@@ -21,6 +21,8 @@ async function authRoutes(fastify) {
   const requestPhoneVerification = ctrl.requestPhoneVerification.bind(ctrl);
   const confirmPhoneVerification = ctrl.confirmPhoneVerification.bind(ctrl);
   const completeProfile = ctrl.completeProfile.bind(ctrl);
+  const getDevices = ctrl.getDevices.bind(ctrl);
+  const revokeDevice = ctrl.revokeDevice.bind(ctrl);
 
   // ─────────────────────────────────────────
   // Public routes (no auth required)
@@ -104,6 +106,16 @@ async function authRoutes(fastify) {
   fastify.post('/complete-profile', {
     preHandler: [authenticate, sanitizeInput],
     handler: completeProfile,
+  });
+
+  fastify.get('/devices', {
+    preHandler: [authenticate],
+    handler: getDevices,
+  });
+
+  fastify.delete('/devices/:id', {
+    preHandler: [authenticate],
+    handler: revokeDevice,
   });
 }
 

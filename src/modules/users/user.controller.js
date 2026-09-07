@@ -1,6 +1,7 @@
 'use strict';
 
 const UserService = require('./user.service');
+const BlockService = require('./block.service');
 const NotificationService = require('../notifications/notification.service');
 const { successResponse, paginatedResponse } = require('../../shared/utils/responseFormatter');
 const ValidationError = require('../../shared/errors/ValidationError');
@@ -16,6 +17,7 @@ class UserController {
   constructor(fastify) {
     this.fastify = fastify;
     this.userService = new UserService(fastify.supabase, fastify.redis);
+    this.blockService = new BlockService(fastify.supabase, fastify.redis);
     this.notificationService = new NotificationService(
       fastify.supabase,
       fastify.redis
@@ -166,6 +168,30 @@ class UserController {
   async deleteAccount(request, reply) {
     await this.userService.deleteAccount(request.user.id, request.user.username);
     return reply.send(successResponse(null, 'Account deleted successfully'));
+  }
+
+  // POST /users/:id/block
+  async blockUser(request, reply) {
+    const result = await this.blockService.blockUser(
+      request.user.id,
+      request.params.id
+    );
+    return reply.send(successResponse(result, 'User blocked successfully'));
+  }
+
+  // DELETE /users/:id/block
+  async unblockUser(request, reply) {
+    const result = await this.blockService.unblockUser(
+      request.user.id,
+      request.params.id
+    );
+    return reply.send(successResponse(result, 'User unblocked successfully'));
+  }
+
+  // GET /users/me/blocked
+  async getBlockedUsers(request, reply) {
+    const result = await this.blockService.getBlockedUsers(request.user.id);
+    return reply.send(successResponse(result));
   }
 }
 

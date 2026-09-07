@@ -1,0 +1,23 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAM_ID.com.aliwayz.app",
+        "paths": [
+          "/auth/*",
+          "/reset-password",
+          "/product/*",
+          "/store/*",
+          "/profile/*",
+          "/app/*"
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "TEAM_ID.com.aliwayz.app"
+    ]
+  }
+}

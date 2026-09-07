@@ -68,6 +68,11 @@ async function productRoutes(fastify) {
     handler: ctrl.uploadImages.bind(ctrl),
   });
 
+  fastify.post('/:id/upload-urls', {
+    preHandler: [authenticate, requireSeller],
+    handler: ctrl.getPresignedUploadUrls.bind(ctrl),
+  });
+
   fastify.delete('/:id/images/:imageId', {
     preHandler: [authenticate, requireSeller],
     handler: ctrl.deleteImage.bind(ctrl),

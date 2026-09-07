@@ -77,6 +77,25 @@ async function userRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────
+  // Protected — User Blocking System (Apple Guideline 1.2)
+  // ─────────────────────────────────────────
+
+  fastify.get('/me/blocked', {
+    preHandler: [authenticate],
+    handler: ctrl.getBlockedUsers.bind(ctrl),
+  });
+
+  fastify.post('/:id/block', {
+    preHandler: [authenticate],
+    handler: ctrl.blockUser.bind(ctrl),
+  });
+
+  fastify.delete('/:id/block', {
+    preHandler: [authenticate],
+    handler: ctrl.unblockUser.bind(ctrl),
+  });
+
+  // ─────────────────────────────────────────
   // Public — view user profiles
   // ─────────────────────────────────────────
 

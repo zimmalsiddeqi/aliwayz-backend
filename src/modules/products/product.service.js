@@ -360,7 +360,14 @@ class ProductService {
         is_primary: isPrimary,
       });
 
-      uploadedImages.push(imageRecord);
+      uploadedImages.push({
+        ...imageRecord,
+        urls: {
+          thumbnail: imageRecord.thumbnail_cdn_url || imageRecord.cdn_url,
+          medium: imageRecord.cdn_url,
+          original: imageRecord.cdn_url,
+        },
+      });
       displayOrder++;
     }
 
@@ -368,6 +375,49 @@ class ProductService {
     await this.redis.del(CACHE_KEYS.PRODUCT(productId));
 
     return uploadedImages;
+  }
+
+  // ─────────────────────────────────────────
+  // CREATE PRESIGNED UPLOAD URLS (Mobile Uploads)
+  // ─────────────────────────────────────────
+  async createImageUploadUrls(sellerId, productId, fileNames) {
+    const product = await this.repo.findProductById(productId);
+    if (!product) throw new NotFoundError('Product');
+
+    if (product.users?.id !== sellerId) {
+      throw new ForbiddenError('You do not own this product');
+    }
+
+    const uploadUrls = [];
+
+    for (const file of fileNames) {
+      const imageUuid = uuidv4();
+      const ext = file.endsWith('.png') ? 'png' : file.endsWith('.jpg') || file.endsWith('.jpeg') ? 'jpg' : 'webp';
+      const path = `products/${productId}/${imageUuid}.${ext}`;
+
+      const { data, error } = await this.supabase.storage
+        .from(appConfig.storage.bucket)
+        .createSignedUploadUrl(path);
+
+      if (error) {
+        logger.error({ error, path }, 'createSignedUploadUrl failed');
+        throw new AppError('Failed to generate presigned upload URL', 500);
+      }
+
+      const publicUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${appConfig.storage.bucket}/${path}`;
+      const cdnUrl = appConfig.cdn.baseUrl
+        ? `${appConfig.cdn.baseUrl}/${appConfig.storage.bucket}/${path}`
+        : publicUrl;
+
+      uploadUrls.push({
+        path,
+        upload_url: data.signedUrl,
+        token: data.token,
+        public_url: cdnUrl,
+      });
+    }
+
+    return { upload_urls: uploadUrls };
   }
 
   // ─────────────────────────────────────────

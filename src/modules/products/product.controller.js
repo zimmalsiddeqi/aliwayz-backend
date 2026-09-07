@@ -225,6 +225,24 @@ async uploadImages(request, reply) {
 }
 
   // ─────────────────────────────────────────
+  // POST /products/:id/upload-urls (Presigned URLs for Mobile)
+  // ─────────────────────────────────────────
+  async getPresignedUploadUrls(request, reply) {
+    const { file_names } = request.body || {};
+    if (!Array.isArray(file_names) || file_names.length === 0) {
+      throw new ValidationError('file_names array is required');
+    }
+
+    const result = await this.productService.createImageUploadUrls(
+      request.user.id,
+      request.params.id,
+      file_names
+    );
+
+    return reply.status(201).send(successResponse(result));
+  }
+
+  // ─────────────────────────────────────────
   // DELETE /products/:id/images/:imageId
   // ─────────────────────────────────────────
   async deleteImage(request, reply) {

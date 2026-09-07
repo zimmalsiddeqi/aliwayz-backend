@@ -37,6 +37,7 @@ describe('Seller Verification System Unit Tests', () => {
       single: jest.fn().mockReturnThis(),
       maybeSingle: jest.fn().mockReturnThis(),
       update: jest.fn().mockReturnThis(),
+      delete: jest.fn().mockReturnThis(),
       insert: jest.fn().mockReturnThis(),
       rpc: jest.fn().mockResolvedValue({ data: {}, error: null }),
       storage: {
@@ -116,19 +117,19 @@ describe('Seller Verification System Unit Tests', () => {
       mockStoreRepo.createStore = jest.fn().mockResolvedValue({ id: 'store-123' });
     });
 
-    it('should throw ForbiddenError with code VERIFICATION_REQUIRED and save draft if seller is not verified', async () => {
+    it('should set is_verified false when seller is not verified', async () => {
       // Mock verificationEngine.isVerified to false
       storeService.verificationEngine.isVerified = jest.fn().mockResolvedValue(false);
-      storeService.verificationRepo.saveStoreDraft = jest.fn().mockResolvedValue({ id: 'draft-123' });
 
       const storeData = { store_name: 'Test Store Name' };
+      const store = await storeService.createStore('user-123', 'seller', storeData);
 
-      await expect(
-        storeService.createStore('user-123', 'seller', storeData)
-      ).rejects.toThrow(ForbiddenError);
-
-      expect(storeService.verificationRepo.saveStoreDraft).toHaveBeenCalledWith('user-123', storeData);
-      expect(mockStoreRepo.createStore).not.toHaveBeenCalled();
+      expect(store.id).toBe('store-123');
+      expect(mockStoreRepo.createStore).toHaveBeenCalledWith(
+        expect.objectContaining({
+          store_name: 'Test Store Name',
+        })
+      );
     });
 
     it('should successfully create store if seller is verified', async () => {

@@ -199,12 +199,15 @@ class ProductRepository {
     lat,
     lng,
     radiusKm,
+    excludeUserIds = [],
+    cursor = null,
   }) {
     // If location params provided, use geo filtering
     if (lat && lng && radiusKm && parseFloat(radiusKm) < 15000) {
       return this._browseNearbyProducts({
         limit, offset, categoryId, minPrice, maxPrice,
         condition, sort, city, status, lat, lng, radiusKm,
+        excludeUserIds,
       });
     }
 
@@ -214,6 +217,14 @@ class ProductRepository {
       .select(this._listSelect, { count: 'exact' })
       .eq('status', status)
       .eq('is_deleted', false);
+
+    if (Array.isArray(excludeUserIds) && excludeUserIds.length > 0) {
+      query = query.not('seller_id', 'in', `(${excludeUserIds.join(',')})`);
+    }
+
+    if (cursor) {
+      query = query.lt('created_at', cursor);
+    }
 
     if (categoryId) {
       let categoryIds = Array.isArray(categoryId) ? categoryId : [categoryId];

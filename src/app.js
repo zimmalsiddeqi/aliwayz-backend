@@ -96,6 +96,23 @@ const buildApp = async () => {
   });
 
   // ─────────────────────────────────────────
+  // Static Files & Deep Link Verification
+  // ─────────────────────────────────────────
+  const path = require("path");
+  await fastify.register(require("@fastify/static"), {
+    root: path.join(__dirname, "..", "public"),
+    prefix: "/public/",
+  });
+
+  fastify.get("/.well-known/apple-app-site-association", async (request, reply) => {
+    return reply.type("application/json").sendFile(".well-known/apple-app-site-association", path.join(__dirname, "..", "public"));
+  });
+
+  fastify.get("/.well-known/assetlinks.json", async (request, reply) => {
+    return reply.type("application/json").sendFile(".well-known/assetlinks.json", path.join(__dirname, "..", "public"));
+  });
+
+  // ─────────────────────────────────────────
   // Core Plugins (order is critical)
   // ─────────────────────────────────────────
   await fastify.register(require("./plugins/supabase.plugin"));
@@ -250,6 +267,7 @@ const buildApp = async () => {
 
     // ── Rate limit ──────────────────────────────────────────
     if (error.statusCode === 429) {
+      reply.header('Retry-After', '60');
       return reply.status(429).send({
         success: false,
         message: "Too many requests. Please slow down.",

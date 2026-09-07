@@ -242,6 +242,47 @@ class AuthRepository {
   }
 
   // ─────────────────────────────────────────
+  // Get active sessions for a user
+  // ─────────────────────────────────────────
+  async getUserSessions(userId) {
+    const { data, error } = await this.supabase
+      .from('refresh_tokens')
+      .select('id, device_id, device_name, ip_address, user_agent, created_at, expires_at')
+      .eq('user_id', userId)
+      .eq('is_revoked', false)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error({ error, userId }, 'getUserSessions failed');
+      throw error;
+    }
+
+    return data || [];
+  }
+
+  // ─────────────────────────────────────────
+  // Revoke specific session by ID
+  // ─────────────────────────────────────────
+  async revokeSessionById(userId, sessionId) {
+    const { error } = await this.supabase
+      .from('refresh_tokens')
+      .update({
+        is_revoked: true,
+        revoked_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId)
+      .eq('user_id', userId);
+
+    if (error) {
+      logger.error({ error, userId, sessionId }, 'revokeSessionById failed');
+      throw error;
+    }
+
+    return { message: 'Session revoked successfully' };
+  }
+
+  // ─────────────────────────────────────────
   // Store email verification token
   // ─────────────────────────────────────────
   async storeEmailVerificationToken(email, tokenHash, expiresAt) {
