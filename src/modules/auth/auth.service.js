@@ -1,6 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
 const { OAuth2Client } = require("google-auth-library");
 const dayjs = require("dayjs");
 
@@ -439,6 +440,46 @@ async signup(data, deviceInfo = {}) {
 // ─────────────────────────────────────────
 async login(data, deviceInfo = {}) {
   const { email, password } = data;
+
+  // ── Check separate admins table first ──────────────────
+  const admin = await this.repo.findAdminByEmail(email);
+
+  if (admin) {
+    if (admin.account_status === 'banned') {
+      throw new AppError('Your account has been banned. Contact support.', 403, 'ACCOUNT_BANNED');
+    }
+    if (admin.account_status === 'suspended') {
+      throw new AppError('Your account has been suspended. Contact support.', 403, 'ACCOUNT_SUSPENDED');
+    }
+
+    let isPasswordValid = false;
+    if (admin.password_hash) {
+      if (admin.password_hash.startsWith('$2')) {
+        isPasswordValid = bcrypt.compareSync(password, admin.password_hash);
+      } else {
+        isPasswordValid = (password === admin.password_hash);
+      }
+    }
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedError('Invalid email or password');
+    }
+
+    await this.repo.updateAdmin(admin.id, {
+      last_active_at: new Date().toISOString(),
+    });
+
+    const { accessToken, refreshToken } = await this._issueTokenPair(
+      admin,
+      deviceInfo
+    );
+
+    return {
+      user:          this._formatUserResponse(admin),
+      access_token:  accessToken,
+      refresh_token: refreshToken,
+    };
+  }
 
   // Check user exists in our DB first
   const user = await this.repo.findUserByEmail(email);

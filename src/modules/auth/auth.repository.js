@@ -418,6 +418,59 @@ class AuthRepository {
       throw error;
     }
   }
+
+  // ─────────────────────────────────────────
+  // Find admin by email (from admins table)
+  // ─────────────────────────────────────────
+  async findAdminByEmail(email) {
+    const { data, error } = await this.supabase
+      .from('admins')
+      .select(
+        'id, email, username, password_hash, full_name, avatar_url, role, account_status, email_verified, phone_verified, auth_provider'
+      )
+      .eq('email', email)
+      .maybeSingle();
+
+    if (error) {
+      logger.warn({ error, email }, 'findAdminByEmail query error');
+      return null;
+    }
+
+    return data || null;
+  }
+
+  // ─────────────────────────────────────────
+  // Find admin by ID (from admins table)
+  // ─────────────────────────────────────────
+  async findAdminById(id) {
+    const { data, error } = await this.supabase
+      .from('admins')
+      .select(
+        'id, email, username, password_hash, full_name, avatar_url, role, account_status, email_verified, phone_verified, auth_provider'
+      )
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) return null;
+    return data || null;
+  }
+
+  // ─────────────────────────────────────────
+  // Update admin record
+  // ─────────────────────────────────────────
+  async updateAdmin(id, updates) {
+    const { data, error } = await this.supabase
+      .from('admins')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      logger.error({ error, id }, 'updateAdmin failed');
+    }
+    return data || null;
+  }
 }
 
 module.exports = AuthRepository;

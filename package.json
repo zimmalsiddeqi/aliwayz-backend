@@ -10,7 +10,8 @@
     "test": "jest --runInBand --forceExit --detectOpenHandles",
     "check:env": "node src/scripts/check-env.js",
     "seed:categories": "node database/seeds/categories.seed.js",
-    "seed:badges": "node database/seeds/badges.seed.js"
+    "seed:badges": "node database/seeds/badges.seed.js",
+    "seed:admin": "node database/seeds/admin.seed.js"
   },
   "keywords": [],
   "author": "",

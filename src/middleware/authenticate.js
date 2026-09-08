@@ -19,7 +19,7 @@ const authenticate = async (request, reply) => {
       throw new UnauthorizedError('Invalid token payload');
     }
 
-    const { data: user, error } = await request.server.supabase
+    let { data: user, error } = await request.server.supabase
       .from('users')
       .select('id, role, account_status, email_verified, username')
       .eq('id', userId)
@@ -39,7 +39,18 @@ const authenticate = async (request, reply) => {
     }
 
     if (!user) {
-      throw new UnauthorizedError('User account not found');
+      // Check admins table for dedicated admin accounts
+      const { data: adminUser } = await request.server.supabase
+        .from('admins')
+        .select('id, role, account_status, email_verified, username')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (adminUser) {
+        user = adminUser;
+      } else {
+        throw new UnauthorizedError('User account not found');
+      }
     }
 
     if (user.account_status === 'banned') {
