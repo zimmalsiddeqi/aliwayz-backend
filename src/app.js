@@ -56,8 +56,14 @@ const buildApp = async () => {
         }
       }
 
-      // In production — check allowedOrigins list
-      if (appConfig.cors.allowedOrigins.includes(origin)) {
+      // Check allowedOrigins list or *.vercel.app domains
+      if (
+        appConfig.cors.allowedOrigins.includes("*") ||
+        appConfig.cors.allowedOrigins.includes(origin) ||
+        origin.endsWith(".vercel.app") ||
+        origin.startsWith("http://localhost") ||
+        origin.startsWith("http://127.0.0.1")
+      ) {
         return cb(null, true);
       }
 
