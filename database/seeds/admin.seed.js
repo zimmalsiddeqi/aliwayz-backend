@@ -11,11 +11,11 @@ const supabase = createClient(
 
 async function seedAdmin() {
   const email = process.env.ADMIN_DEFAULT_EMAIL || 'admin@aliwayz.com';
-  const password = process.env.ADMIN_DEFAULT_PASSWORD || 'Admin123456!';
+  const password = process.env.ADMIN_DEFAULT_PASSWORD || 'Admin@12345';
   const username = process.env.ADMIN_DEFAULT_USERNAME || 'admin';
   const fullName = 'Aliwayz System Admin';
 
-  console.log(\?? Seeding default admin: \...\);
+  console.log(`🌱 Seeding default admin: ${email}...`);
 
   const passwordHash = bcrypt.hashSync(password, 10);
 
@@ -39,15 +39,15 @@ async function seedAdmin() {
     .single();
 
   if (error) {
-    console.error('? Failed to seed admin:', error);
+    console.error('❌ Failed to seed admin:', error);
     process.exit(1);
   }
 
-  console.log(\? Admin created/updated successfully:\);
-  console.log(\   Email: \\);
-  console.log(\   Username: \\);
-  console.log(\   Role: \\);
-  console.log(\   Password: \\);
+  console.log('✅ Admin created/updated successfully:');
+  console.log('   Email:', data.email);
+  console.log('   Username:', data.username);
+  console.log('   Role:', data.role);
+  console.log('   Password:', password);
   process.exit(0);
 }
 
