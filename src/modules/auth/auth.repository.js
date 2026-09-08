@@ -182,6 +182,11 @@ class AuthRepository {
 
     if (error) {
       logger.error({ error, userId }, 'storeRefreshToken failed');
+      // Foreign key constraint failure (e.g. admin user in admins table rather than users table)
+      if (error.code === '23503') {
+        logger.warn({ userId }, 'Skipping refresh_tokens insertion for admin user (FK constraint)');
+        return;
+      }
       throw error;
     }
   }

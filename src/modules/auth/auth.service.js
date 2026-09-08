@@ -938,7 +938,10 @@ async login(data, deviceInfo = {}) {
       );
     }
 
-    const user = await this.repo.findUserById(decoded.id);
+    let user = await this.repo.findUserById(decoded.id);
+    if (!user) {
+      user = await this.repo.findAdminById(decoded.id);
+    }
     if (!user || user.account_status !== "active") {
       throw new UnauthorizedError("User account is not active");
     }
