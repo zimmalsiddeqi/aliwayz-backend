@@ -11,7 +11,7 @@ class UserRepository {
   // Get own full profile
   // ─────────────────────────────────────────
   async getMyProfile(userId) {
-    const { data, error } = await this.supabase
+    let { data, error } = await this.supabase
       .from('users')
       .select(`
         id,
@@ -60,14 +60,50 @@ class UserRepository {
       `)
       .eq('id', userId)
       .eq('is_deleted', false)
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      logger.error({ error }, 'getMyProfile failed');
+    if (!data) {
+      const { data: adminData } = await this.supabase
+        .from('admins')
+        .select(`
+          id,
+          email,
+          username,
+          full_name,
+          avatar_url,
+          role,
+          account_status,
+          email_verified,
+          phone_verified,
+          auth_provider,
+          created_at,
+          last_active_at
+        `)
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (adminData) {
+        data = {
+          ...adminData,
+          bio: null,
+          phone: null,
+          location_city: null,
+          location_lat: null,
+          location_lng: null,
+          fcm_token: null,
+          seller_verification_status: 'none',
+          seller_stats: null,
+          user_badges: [],
+        };
+      }
+    }
+
+    if (error && !data) {
+      logger.error({ error, userId }, 'getMyProfile failed');
       throw error;
     }
 
-    return data;
+    return data || null;
   }
 
   // ─────────────────────────────────────────
