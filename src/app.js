@@ -56,10 +56,13 @@ const buildApp = async () => {
         }
       }
 
-      // Check allowedOrigins list or *.vercel.app domains
+      // Check allowedOrigins list, aliwayz.com, or *.vercel.app domains
       if (
         appConfig.cors.allowedOrigins.includes("*") ||
         appConfig.cors.allowedOrigins.includes(origin) ||
+        origin === "https://aliwayz.com" ||
+        origin === "https://www.aliwayz.com" ||
+        origin.endsWith(".aliwayz.com") ||
         origin.endsWith(".vercel.app") ||
         origin.startsWith("http://localhost") ||
         origin.startsWith("http://127.0.0.1")
