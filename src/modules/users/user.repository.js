@@ -156,7 +156,7 @@ class UserRepository {
   // Update user profile
   // ─────────────────────────────────────────
   async updateProfile(userId, updates) {
-    const { data, error } = await this.supabase
+    let { data, error } = await this.supabase
       .from('users')
       .update({
         ...updates,
@@ -175,10 +175,39 @@ class UserRepository {
         email_verified,
         phone_verified
       `)
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      logger.error({ error }, 'updateProfile failed');
+    if (!data) {
+      const { data: adminData } = await this.supabase
+        .from('admins')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+        .select(`
+          id,
+          email,
+          username,
+          full_name,
+          avatar_url,
+          role,
+          email_verified,
+          phone_verified
+        `)
+        .maybeSingle();
+
+      if (adminData) {
+        data = {
+          ...adminData,
+          bio: null,
+          location_city: null,
+        };
+      }
+    }
+
+    if (error && !data) {
+      logger.error({ error, userId }, 'updateProfile failed');
       throw error;
     }
 

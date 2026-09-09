@@ -92,8 +92,13 @@ class UserService {
   // Processes image with sharp, uploads to Supabase Storage
   // ─────────────────────────────────────────
   async uploadAvatar(userId, fileBuffer, mimetype, originalUsername) {
+    const normalizedMimetype = (mimetype || '').toLowerCase();
+    const isAllowed =
+      constants.ALLOWED_IMAGE_TYPES.includes(normalizedMimetype) ||
+      ['image/jpg', 'image/pjpeg', 'image/x-png', 'image/webp', 'image/png', 'image/jpeg'].includes(normalizedMimetype);
+
     // Validate file type
-    if (!constants.ALLOWED_IMAGE_TYPES.includes(mimetype)) {
+    if (!isAllowed) {
       throw new AppError(
         'Invalid file type. Only JPEG, PNG, and WebP are allowed.',
         400,
@@ -125,6 +130,15 @@ class UserService {
       throw new AppError('Failed to process image', 400, 'IMAGE_PROCESSING_FAILED');
     }
 
+    // Fetch existing profile to find old avatar for cleanup
+    let oldAvatarUrl = null;
+    try {
+      const current = await this.repo.getMyProfile(userId);
+      oldAvatarUrl = current?.avatar_url;
+    } catch (fetchErr) {
+      logger.warn({ fetchErr }, 'Could not fetch current profile for avatar cleanup');
+    }
+
     // Generate unique file path
     const fileName = `avatars/${userId}/${uuidv4()}.webp`;
 
@@ -154,8 +168,27 @@ class UserService {
       avatar_url: cdnUrl,
     });
 
+    // Optionally remove old avatar from storage if it belonged to this user
+    if (oldAvatarUrl && oldAvatarUrl.includes(`/avatars/${userId}/`)) {
+      try {
+        const bucketPrefix = `/storage/v1/object/public/${appConfig.storage.bucket}/`;
+        const oldPath = oldAvatarUrl.split(bucketPrefix)[1];
+        if (oldPath && oldPath !== fileName) {
+          await this.supabase.storage.from(appConfig.storage.bucket).remove([oldPath]);
+        }
+      } catch (delErr) {
+        logger.warn({ delErr }, 'Failed to delete old avatar file');
+      }
+    }
+
     // Invalidate cache
-    await this.redis.del(CACHE_KEYS.USER_PROFILE(originalUsername));
+    if (originalUsername) {
+      try {
+        await this.redis.del(CACHE_KEYS.USER_PROFILE(originalUsername));
+      } catch (cacheErr) {
+        logger.warn({ cacheErr }, 'Failed to invalidate user profile cache');
+      }
+    }
 
     logger.info({ userId, fileName }, 'Avatar uploaded successfully');
 
