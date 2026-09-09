@@ -44,7 +44,7 @@ const appConfig = Object.freeze({
   cors: {
     allowedOrigins: process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
-      : ['https://aliwayz.com', 'https://www.aliwayz.com', 'http://localhost:3000', 'http://localhost:5173'],
+      : ['https://aliwayz.com', 'https://www.aliwayz.com', 'https://admin.aliwayz.com', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'],
   },
 
   jwt: {
