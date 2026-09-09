@@ -152,17 +152,29 @@ class StoreService {
       throw new AppError("Invalid file type", 400, "INVALID_FILE_TYPE");
     }
 
-    const processedBuffer = await sharp(fileBuffer)
-      .resize(300, 300, { fit: "cover" })
-      .webp({ quality: 85 })
-      .toBuffer();
+    let processedBuffer = fileBuffer;
+    let contentType = "image/webp";
+    let fileExt = "webp";
 
-    const fileName = `stores/${storeId}/logo/${uuidv4()}.webp`;
+    try {
+      processedBuffer = await sharp(fileBuffer, { failOnError: false })
+        .rotate()
+        .resize(300, 300, { fit: "cover" })
+        .webp({ quality: 85 })
+        .toBuffer();
+    } catch (err) {
+      logger.warn({ err: err.message }, "Sharp logo processing failed, falling back to original buffer");
+      processedBuffer = fileBuffer;
+      contentType = mimetype || "image/jpeg";
+      fileExt = mimetype?.includes("png") ? "png" : mimetype?.includes("webp") ? "webp" : "jpg";
+    }
+
+    const fileName = `stores/${storeId}/logo/${uuidv4()}.${fileExt}`;
 
     const { error: uploadError } = await this.supabase.storage
       .from(appConfig.storage.bucket)
       .upload(fileName, processedBuffer, {
-        contentType: "image/webp",
+        contentType,
         upsert: true,
       });
 
@@ -195,17 +207,29 @@ class StoreService {
     }
 
     // Banner: wider aspect ratio 1200x400
-    const processedBuffer = await sharp(fileBuffer)
-      .resize(1200, 400, { fit: "cover" })
-      .webp({ quality: 85 })
-      .toBuffer();
+    let processedBuffer = fileBuffer;
+    let contentType = "image/webp";
+    let fileExt = "webp";
 
-    const fileName = `stores/${storeId}/banner/${uuidv4()}.webp`;
+    try {
+      processedBuffer = await sharp(fileBuffer, { failOnError: false })
+        .rotate()
+        .resize(1200, 400, { fit: "cover" })
+        .webp({ quality: 85 })
+        .toBuffer();
+    } catch (err) {
+      logger.warn({ err: err.message }, "Sharp banner processing failed, falling back to original buffer");
+      processedBuffer = fileBuffer;
+      contentType = mimetype || "image/jpeg";
+      fileExt = mimetype?.includes("png") ? "png" : mimetype?.includes("webp") ? "webp" : "jpg";
+    }
+
+    const fileName = `stores/${storeId}/banner/${uuidv4()}.${fileExt}`;
 
     const { error: uploadError } = await this.supabase.storage
       .from(appConfig.storage.bucket)
       .upload(fileName, processedBuffer, {
-        contentType: "image/webp",
+        contentType,
         upsert: true,
       });
 

@@ -116,18 +116,34 @@ class UserService {
     }
 
     // Process image — resize to 400x400 and convert to WebP for optimization
-    let processedBuffer;
+    let processedBuffer = fileBuffer;
+    let contentType = 'image/webp';
+    let fileExtension = 'webp';
+
     try {
-      processedBuffer = await sharp(fileBuffer)
+      processedBuffer = await sharp(fileBuffer, { failOnError: false })
+        .rotate()
         .resize(400, 400, {
           fit: 'cover',
           position: 'center',
         })
         .webp({ quality: 85 })
         .toBuffer();
+      contentType = 'image/webp';
+      fileExtension = 'webp';
     } catch (err) {
-      logger.error({ err }, 'Image processing failed');
-      throw new AppError('Failed to process image', 400, 'IMAGE_PROCESSING_FAILED');
+      logger.warn({ err: err.message }, 'Sharp image processing failed, falling back to original buffer');
+      processedBuffer = fileBuffer;
+      if (normalizedMimetype.includes('png')) {
+        contentType = 'image/png';
+        fileExtension = 'png';
+      } else if (normalizedMimetype.includes('webp')) {
+        contentType = 'image/webp';
+        fileExtension = 'webp';
+      } else {
+        contentType = 'image/jpeg';
+        fileExtension = 'jpg';
+      }
     }
 
     // Fetch existing profile to find old avatar for cleanup
@@ -140,14 +156,14 @@ class UserService {
     }
 
     // Generate unique file path
-    const fileName = `avatars/${userId}/${uuidv4()}.webp`;
+    const fileName = `avatars/${userId}/${uuidv4()}.${fileExtension}`;
 
     // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } =
       await this.supabase.storage
         .from(appConfig.storage.bucket)
         .upload(fileName, processedBuffer, {
-          contentType: 'image/webp',
+          contentType,
           upsert: true, // Overwrite if same path
           cacheControl: '3600',
         });

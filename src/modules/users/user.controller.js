@@ -57,11 +57,22 @@ class UserController {
       throw new ValidationError('No file provided');
     }
 
-    const chunks = [];
-    for await (const chunk of file.file) {
-      chunks.push(chunk);
+    let buffer;
+    if (typeof file.toBuffer === 'function') {
+      buffer = await file.toBuffer();
+    } else if (file.file) {
+      const chunks = [];
+      for await (const chunk of file.file) {
+        chunks.push(chunk);
+      }
+      buffer = Buffer.concat(chunks);
+    } else {
+      buffer = Buffer.from([]);
     }
-    const buffer = Buffer.concat(chunks);
+
+    if (!buffer || buffer.length === 0) {
+      throw new ValidationError('Uploaded file is empty');
+    }
 
     const result = await this.userService.uploadAvatar(
       request.user.id,

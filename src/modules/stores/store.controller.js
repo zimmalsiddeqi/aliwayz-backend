@@ -63,47 +63,68 @@ class StoreController {
   }
 
   // PUT /stores/:id/logo
-async uploadLogo(request, reply) {
-  // ✅ request.file() gets the first file from multipart
-  const data = await request.file();
+  async uploadLogo(request, reply) {
+    const data = await request.file();
 
-  if (!data) throw new ValidationError('No file provided');
+    if (!data) throw new ValidationError('No file provided');
 
-  const chunks = [];
-  for await (const chunk of data.file) {
-    chunks.push(chunk);
+    let buffer;
+    if (typeof data.toBuffer === 'function') {
+      buffer = await data.toBuffer();
+    } else if (data.file) {
+      const chunks = [];
+      for await (const chunk of data.file) {
+        chunks.push(chunk);
+      }
+      buffer = Buffer.concat(chunks);
+    } else {
+      buffer = Buffer.from([]);
+    }
+
+    if (!buffer || buffer.length === 0) {
+      throw new ValidationError('Uploaded file is empty');
+    }
+
+    const result = await this.storeService.uploadLogo(
+      request.user.id,
+      request.params.id,
+      buffer,
+      data.mimetype
+    );
+    return reply.send(successResponse(result, 'Logo uploaded'));
   }
-  const buffer = Buffer.concat(chunks);
 
-  const result = await this.storeService.uploadLogo(
-    request.user.id,
-    request.params.id,
-    buffer,
-    data.mimetype
-  );
-  return reply.send(successResponse(result, 'Logo uploaded'));
-}
+  // PUT /stores/:id/banner
+  async uploadBanner(request, reply) {
+    const data = await request.file();
 
-// PUT /stores/:id/banner
-async uploadBanner(request, reply) {
-  const data = await request.file();
+    if (!data) throw new ValidationError('No file provided');
 
-  if (!data) throw new ValidationError('No file provided');
+    let buffer;
+    if (typeof data.toBuffer === 'function') {
+      buffer = await data.toBuffer();
+    } else if (data.file) {
+      const chunks = [];
+      for await (const chunk of data.file) {
+        chunks.push(chunk);
+      }
+      buffer = Buffer.concat(chunks);
+    } else {
+      buffer = Buffer.from([]);
+    }
 
-  const chunks = [];
-  for await (const chunk of data.file) {
-    chunks.push(chunk);
+    if (!buffer || buffer.length === 0) {
+      throw new ValidationError('Uploaded file is empty');
+    }
+
+    const result = await this.storeService.uploadBanner(
+      request.user.id,
+      request.params.id,
+      buffer,
+      data.mimetype
+    );
+    return reply.send(successResponse(result, 'Banner uploaded'));
   }
-  const buffer = Buffer.concat(chunks);
-
-  const result = await this.storeService.uploadBanner(
-    request.user.id,
-    request.params.id,
-    buffer,
-    data.mimetype
-  );
-  return reply.send(successResponse(result, 'Banner uploaded'));
-}
   // GET /stores/:slug/products
   async getStoreProducts(request, reply) {
     const result = await this.storeService.getStoreProducts(
