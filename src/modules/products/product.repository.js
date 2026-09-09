@@ -79,16 +79,23 @@ class ProductRepository {
       id,
       title,
       slug,
+      description,
       price,
       currency,
       condition,
       status,
+      category_id,
       location_city,
       location_lat,
       location_lng,
       view_count,
       favorite_count,
       created_at,
+      categories (
+        id,
+        name,
+        slug
+      ),
       product_images (
         cdn_url,
         storage_url,
