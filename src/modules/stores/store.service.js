@@ -183,9 +183,20 @@ class StoreService {
       throw new AppError("Failed to upload logo", 500);
     }
 
-    const cdnUrl = appConfig.cdn.baseUrl
-      ? `${appConfig.cdn.baseUrl}/${appConfig.storage.bucket}/${fileName}`
-      : `${process.env.SUPABASE_URL}/storage/v1/object/public/${appConfig.storage.bucket}/${fileName}`;
+    let cdnUrl;
+    try {
+      const { data: publicUrlData } = this.supabase.storage
+        .from(appConfig.storage.bucket)
+        .getPublicUrl(fileName);
+      cdnUrl = publicUrlData?.publicUrl;
+    } catch (urlErr) {
+      logger.warn({ urlErr }, "getPublicUrl failed for store logo");
+    }
+
+    if (!cdnUrl) {
+      const baseUrl = (appConfig.cdn.baseUrl || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+      cdnUrl = `${baseUrl}/storage/v1/object/public/${appConfig.storage.bucket}/${fileName}`;
+    }
 
     await this.repo.updateStore(storeId, { logo_url: cdnUrl });
     await this.redis.del(CACHE_KEYS.STORE(store.slug));
@@ -238,9 +249,20 @@ class StoreService {
       throw new AppError("Failed to upload banner", 500);
     }
 
-    const cdnUrl = appConfig.cdn.baseUrl
-      ? `${appConfig.cdn.baseUrl}/${appConfig.storage.bucket}/${fileName}`
-      : `${process.env.SUPABASE_URL}/storage/v1/object/public/${appConfig.storage.bucket}/${fileName}`;
+    let cdnUrl;
+    try {
+      const { data: publicUrlData } = this.supabase.storage
+        .from(appConfig.storage.bucket)
+        .getPublicUrl(fileName);
+      cdnUrl = publicUrlData?.publicUrl;
+    } catch (urlErr) {
+      logger.warn({ urlErr }, "getPublicUrl failed for store banner");
+    }
+
+    if (!cdnUrl) {
+      const baseUrl = (appConfig.cdn.baseUrl || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+      cdnUrl = `${baseUrl}/storage/v1/object/public/${appConfig.storage.bucket}/${fileName}`;
+    }
 
     await this.repo.updateStore(storeId, { banner_url: cdnUrl });
     await this.redis.del(CACHE_KEYS.STORE(store.slug));

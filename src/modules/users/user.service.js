@@ -173,11 +173,21 @@ class UserService {
       throw new AppError('Failed to upload avatar', 500);
     }
 
-    // Build CDN URL
-    const storageUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${appConfig.storage.bucket}/${fileName}`;
-    const cdnUrl = appConfig.cdn.baseUrl
-      ? `${appConfig.cdn.baseUrl}/${appConfig.storage.bucket}/${fileName}`
-      : storageUrl;
+    // Build CDN / Storage URL
+    let cdnUrl;
+    try {
+      const { data: publicUrlData } = this.supabase.storage
+        .from(appConfig.storage.bucket)
+        .getPublicUrl(fileName);
+      cdnUrl = publicUrlData?.publicUrl;
+    } catch (urlErr) {
+      logger.warn({ urlErr }, 'getPublicUrl failed, constructing manually');
+    }
+
+    if (!cdnUrl) {
+      const baseUrl = (appConfig.cdn.baseUrl || process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+      cdnUrl = `${baseUrl}/storage/v1/object/public/${appConfig.storage.bucket}/${fileName}`;
+    }
 
     // Update user record
     const updated = await this.repo.updateProfile(userId, {
