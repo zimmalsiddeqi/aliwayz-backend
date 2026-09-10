@@ -238,6 +238,9 @@ const buildApp = async () => {
       await api.register(require("./modules/feedback/feedback.routes"), {
         prefix: "/feedback",
       });
+      await api.register(require("./modules/wanted/wanted.routes"), {
+        prefix: "/wanted",
+      });
     },
     { prefix: `/api/${appConfig.apiVersion}` },
   );
