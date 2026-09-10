@@ -207,9 +207,18 @@ async function redisPlugin(fastify) {
 
   fastify.decorate('redis', dynamicCache);
   fastify.decorate('redisClient', redis);
+  fastify.decorate('isRedisConnected', () => !useFallback);
 
   fastify.addHook('onClose', async () => {
-    await redis.quit();
+    try {
+      if (!useFallback && redis.status === 'ready') {
+        await redis.quit();
+      } else {
+        redis.disconnect();
+      }
+    } catch {
+      // Ignore cleanup error
+    }
     logger.info('Redis connection closed');
   });
 }
