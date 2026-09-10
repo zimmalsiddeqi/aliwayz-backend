@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const logger = require('../../shared/utils/logger');
 
@@ -73,7 +73,35 @@ class WantedRepository {
   }) {
     let query = this.supabase
       .from('wanted_requests')
-      .select(`${this._baseSelect}, wanted_matches(count)`, { count: 'exact' });
+      .select(`
+        ${this._baseSelect},
+        wanted_matches (
+          id,
+          seller_id,
+          product_id,
+          message,
+          status,
+          created_at,
+          products (
+            id,
+            title,
+            price,
+            currency,
+            location_city,
+            product_images (
+              cdn_url,
+              storage_url,
+              is_primary
+            )
+          ),
+          users:seller_id (
+            id,
+            username,
+            full_name,
+            avatar_url
+          )
+        )
+      `, { count: 'exact' });
 
     if (status) {
       query = query.eq('status', status);
