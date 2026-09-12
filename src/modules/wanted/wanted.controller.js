@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const logger = require('../../shared/utils/logger');
 const WantedService = require('./wanted.service');
@@ -27,7 +27,7 @@ class WantedController {
   }
 
   async browseWantedRequests(request, reply) {
-    const result = await this.wantedService.browseRequests(request.query);
+    const result = await this.wantedService.browseRequests(request.query, request.user);
     return reply.send(paginatedResponse(result.data, result.pagination));
   }
 

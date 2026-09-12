@@ -49,7 +49,7 @@ class WantedService {
     return newRequest;
   }
 
-  async browseRequests(query) {
+  async browseRequests(query, currentUser = null) {
     const { limit, offset, page } = getPaginationParams(query);
 
     const { data, total } = await this.repo.findWantedRequests({
@@ -65,13 +65,17 @@ class WantedService {
       offset,
     });
 
-    const totalPages = Math.ceil(total / limit);
+    // All other users' requests are shown in the Wanted feed.
+    // If the current logged-in user has role 'both' (or 'seller'), their own requests
+    // will not be shown in the public Wanted page (they appear in My Requests).
+    let filteredData = data || [];
+    if (currentUser?.id && (currentUser.role === 'both' || currentUser.role === 'seller')) {
+      filteredData = filteredData.filter(
+        (req) => req.buyer_id !== currentUser.id && req.users?.id !== currentUser.id
+      );
+    }
 
-    // Filter out requests posted by users with role 'seller' or 'both' for public Wanted feed
-    const filteredData = (data || []).filter((req) => {
-      const creatorRole = req.users?.role;
-      return !creatorRole || creatorRole === 'buyer';
-    });
+    const totalPages = Math.ceil(total / limit);
 
     return {
       data: filteredData,
