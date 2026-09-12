@@ -22,8 +22,23 @@ async function socketPlugin(fastify) {
     pingTimeout: 30000,
     pingInterval: 10000,
     maxHttpBufferSize: 1e6,
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'],
   });
+
+  // Support clients connecting to /api/v1/socket.io or /api/socket.io
+  fastify.addHook('onRequest', async (request, reply) => {
+    if (request.raw?.url && request.raw.url.includes('/socket.io')) {
+      request.raw.url = request.raw.url.replace(/\/api(\/v\d+)?\/socket\.io/, '/socket.io');
+    }
+  });
+
+  if (fastify.server) {
+    fastify.server.on('upgrade', (req) => {
+      if (req?.url && req.url.includes('/socket.io')) {
+        req.url = req.url.replace(/\/api(\/v\d+)?\/socket\.io/, '/socket.io');
+      }
+    });
+  }
 
   // ─────────────────────────────────────────
   // Redis Adapter — create fresh connections

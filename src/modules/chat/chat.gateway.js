@@ -339,10 +339,17 @@ class ChatGateway {
   // ─────────────────────────────────────────
   async _sendFCMPushFallback(conversationId, message, senderUser, tempId = '') {
     try {
-      // 1. Get active room members from Redis
-      const activeMembers = await this.redis.smembers(
-        `conv:members:${conversationId}`
-      );
+      // 1. Get active room members from Redis safely
+      let activeMembers = [];
+      try {
+        if (this.redis?.client && typeof this.redis.client.smembers === 'function') {
+          activeMembers = await this.redis.client.smembers(`conv:members:${conversationId}`);
+        } else if (typeof this.redis?.smembers === 'function') {
+          activeMembers = await this.redis.smembers(`conv:members:${conversationId}`);
+        }
+      } catch (redisErr) {
+        // Safe in-memory fallback
+      }
 
       // 2. Lookup conversation to find participants
       const conversation = await this.chatService['repo'].findConversationById(
