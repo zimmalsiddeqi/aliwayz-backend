@@ -407,6 +407,9 @@ class UserRepository {
     await this.supabase.from('reviews').delete().eq('user_id', userId);
     await this.supabase.from('user_badges').delete().eq('user_id', userId);
     await this.supabase.from('seller_stats').delete().eq('user_id', userId);
+    try {
+      await this.supabase.from('user_push_tokens').delete().eq('user_id', userId);
+    } catch (_) {}
 
     // 4. Finally delete the user record from database
     const { error } = await this.supabase
@@ -418,6 +421,66 @@ class UserRepository {
       logger.error({ error }, 'hardDeleteUser failed');
       throw error;
     }
+  }
+
+  // ─────────────────────────────────────────
+  // Update FCM Push Token (supports multi-device)
+  // ─────────────────────────────────────────
+  async updateFcmToken(userId, token, platform = 'android', deviceId = null) {
+    // 1. Update legacy single-token column in users table
+    const { error: userError } = await this.supabase
+      .from('users')
+      .update({ fcm_token: token })
+      .eq('id', userId);
+
+    if (userError) {
+      logger.warn({ error: userError, userId }, 'Failed to update fcm_token on users table');
+    }
+
+    // 2. Upsert into user_push_tokens table
+    try {
+      const { error: tokenError } = await this.supabase
+        .from('user_push_tokens')
+        .upsert(
+          {
+            user_id: userId,
+            token,
+            platform: platform || 'android',
+            device_id: deviceId || null,
+            is_active: true,
+            last_used_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'token' }
+        );
+
+      if (tokenError) {
+        logger.warn({ error: tokenError, userId }, 'Failed to upsert user_push_tokens');
+      }
+    } catch (err) {
+      logger.warn({ err: err.message, userId }, 'user_push_tokens upsert exception');
+    }
+
+    return { success: true, token };
+  }
+
+  // ─────────────────────────────────────────
+  // Deactivate FCM Push Token (e.g. on logout or invalid token)
+  // ─────────────────────────────────────────
+  async deactivateFcmToken(token) {
+    try {
+      await this.supabase
+        .from('user_push_tokens')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq('token', token);
+    } catch (_) {}
+
+    try {
+      await this.supabase
+        .from('users')
+        .update({ fcm_token: null })
+        .eq('fcm_token', token);
+    } catch (_) {}
   }
 }
 

@@ -29,7 +29,9 @@ const updateRoleSchema = z.object({
 });
 
 const updateFcmTokenSchema = z.object({
-  fcm_token: z.string().min(1).max(500),
+  fcm_token: z.string().min(1).max(1000),
+  platform: z.enum(['android', 'ios', 'web']).optional().default('android'),
+  device_id: z.string().max(255).optional(),
 });
 
 module.exports = {

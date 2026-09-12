@@ -103,9 +103,11 @@ class UserController {
     const data = this._validate(updateFcmTokenSchema, request.body);
     const result = await this.userService.updateFcmToken(
       request.user.id,
-      data.fcm_token
+      data.fcm_token,
+      data.platform,
+      data.device_id
     );
-    return reply.send(successResponse(result));
+    return reply.send(successResponse(result, 'FCM token updated successfully'));
   }
 
   // GET /users/:username

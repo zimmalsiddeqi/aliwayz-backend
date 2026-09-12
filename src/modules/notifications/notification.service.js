@@ -101,6 +101,30 @@ class NotificationService {
   }
 
   // ─────────────────────────────────────────
+  // DELETE SINGLE NOTIFICATION
+  // ─────────────────────────────────────────
+  async deleteNotification(userId, notificationId) {
+    const deleted = await this.repo.deleteNotification(userId, notificationId);
+    const unreadCount = await this.repo.getUnreadCount(userId);
+    return {
+      message: 'Notification deleted',
+      deleted_id: notificationId,
+      unread_count: unreadCount,
+    };
+  }
+
+  // ─────────────────────────────────────────
+  // DELETE ALL NOTIFICATIONS
+  // ─────────────────────────────────────────
+  async deleteAllNotifications(userId) {
+    await this.repo.deleteAllNotifications(userId);
+    return {
+      message: 'All notifications deleted',
+      unread_count: 0,
+    };
+  }
+
+  // ─────────────────────────────────────────
   // SEND BROADCAST PUSH (Admin function)
   // Sends to a list of user IDs or all users
   // ─────────────────────────────────────────
@@ -137,30 +161,72 @@ class NotificationService {
   // PRIVATE: Send FCM push notification
   // ─────────────────────────────────────────
   async _sendFCMPush(notificationId, userId, title, body, data, type) {
-    const fcmToken = await this.repo.getUserFCMToken(userId);
-    if (!fcmToken) return; // User has no push token (web user or not registered)
+    const tokens = await this.repo.getUserPushTokens(userId);
+    if (!tokens || tokens.length === 0) return; // User has no registered push tokens
 
     const payloadData = data && typeof data === 'object' ? data : {};
 
-    const message = {
-      token: fcmToken,
+    // Map notification type to frontend deep-link route
+    let targetRoute = '/notifications';
+    if (payloadData.route) {
+      targetRoute = payloadData.route;
+    } else {
+      switch (type) {
+        case 'new_message':
+          targetRoute = payloadData.conversation_id ? `/inbox/${payloadData.conversation_id}` : '/inbox';
+          break;
+        case 'product_sold':
+          targetRoute = payloadData.seller_store_slug ? `/store/${payloadData.seller_store_slug}` : '/notifications';
+          break;
+        case 'new_follower':
+          targetRoute = payloadData.follower_username ? `/store/${payloadData.follower_username}` : '/notifications';
+          break;
+        case 'price_update':
+        case 'review_received':
+          targetRoute = payloadData.product_id ? `/product/${payloadData.product_id}` : '/notifications';
+          break;
+        case 'qr_generated':
+          targetRoute = payloadData.conversation_id ? `/inbox/${payloadData.conversation_id}` : '/inbox';
+          break;
+        case 'badge_earned':
+          targetRoute = '/profile';
+          break;
+        case 'report_resolved':
+        case 'admin_message':
+        default:
+          targetRoute = '/notifications';
+          break;
+      }
+    }
+
+    const stringData = {
+      type: type || 'general',
+      notification_id: String(notificationId),
+      route: targetRoute,
+      title: title || 'Aliwayz',
+      body: body || '',
+      channel_id: 'aliwayz_default',
+      ...Object.fromEntries(
+        Object.entries(payloadData).map(([k, v]) => [k, String(v ?? '')])
+      ),
+    };
+
+    const multicastMessage = {
+      tokens,
       notification: {
         title,
         body,
       },
-      data: {
-        type: type || 'general',
-        notification_id: String(notificationId),
-        // FCM data must be strings
-        ...Object.fromEntries(
-          Object.entries(payloadData).map(([k, v]) => [k, String(v ?? '')])
-        ),
-      },
+      data: stringData,
       android: {
         priority: 'high',
         notification: {
+          channelId: 'aliwayz_default',
           sound: 'default',
-          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          icon: 'ic_notification',
+          color: '#10B981',
+          defaultSound: true,
+          defaultVibrateTimings: true,
         },
       },
       apns: {
@@ -174,31 +240,36 @@ class NotificationService {
     };
 
     try {
-      await admin.messaging().send(message);
-      await this.repo.markFCMSent(notificationId);
-
+      const response = await admin.messaging().sendEachForMulticast(multicastMessage);
       logger.info(
-        { userId, type, notificationId },
-        'FCM push notification sent'
+        { userId, type, notificationId, successCount: response.successCount, failureCount: response.failureCount },
+        'FCM multicast batch sent'
       );
-    } catch (err) {
-      // Handle invalid FCM token (user uninstalled app)
-      if (
-        err.code === 'messaging/invalid-registration-token' ||
-        err.code === 'messaging/registration-token-not-registered'
-      ) {
-        logger.warn(
-          { userId },
-          'Invalid FCM token — clearing from user record'
-        );
-        // Clear invalid token
-        await this.supabase
-          .from('users')
-          .update({ fcm_token: null })
-          .eq('id', userId);
-      } else {
-        throw err;
+
+      if (response.successCount > 0) {
+        await this.repo.markFCMSent(notificationId);
       }
+
+      // Handle failed tokens (uninstalled app, expired token)
+      if (response.failureCount > 0) {
+        for (let i = 0; i < response.responses.length; i++) {
+          const resp = response.responses[i];
+          if (!resp.success && resp.error) {
+            const errCode = resp.error.code;
+            if (
+              errCode === 'messaging/invalid-registration-token' ||
+              errCode === 'messaging/registration-token-not-registered'
+            ) {
+              const deadToken = tokens[i];
+              logger.warn({ userId, deadToken: deadToken.substring(0, 10) + '...' }, 'Deactivating dead FCM token');
+              await this.repo.deactivateInvalidToken(deadToken);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      logger.error({ err: err.message, userId, notificationId }, 'FCM sendEachForMulticast error');
+      throw err;
     }
   }
 }

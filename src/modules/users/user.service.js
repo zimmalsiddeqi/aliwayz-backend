@@ -340,6 +340,24 @@ class UserService {
 
     return { message: 'Account deleted successfully' };
   }
+
+  // ─────────────────────────────────────────
+  // UPDATE FCM PUSH TOKEN
+  // ─────────────────────────────────────────
+  async updateFcmToken(userId, fcmToken, platform = 'android', deviceId = null) {
+    if (!fcmToken) {
+      throw new AppError('FCM token is required', 400, 'MISSING_FCM_TOKEN');
+    }
+    return await this.repo.updateFcmToken(userId, fcmToken, platform, deviceId);
+  }
+
+  // ─────────────────────────────────────────
+  // DEACTIVATE FCM PUSH TOKEN
+  // ─────────────────────────────────────────
+  async deactivateFcmToken(token) {
+    if (!token) return;
+    return await this.repo.deactivateFcmToken(token);
+  }
 }
 
 module.exports = UserService;

@@ -127,7 +127,7 @@ class NotificationRepository {
   }
 
   // ─────────────────────────────────────────
-  // Get FCM token for a user
+  // Get FCM token for a user (legacy single token)
   // ─────────────────────────────────────────
   async getUserFCMToken(userId) {
     const { data, error } = await this.supabase
@@ -138,6 +138,57 @@ class NotificationRepository {
 
     if (error) return null;
     return data?.fcm_token || null;
+  }
+
+  // ─────────────────────────────────────────
+  // Get all active push tokens for a user (multi-device)
+  // ─────────────────────────────────────────
+  async getUserPushTokens(userId) {
+    const tokens = new Set();
+
+    // 1. Query user_push_tokens table
+    try {
+      const { data, error } = await this.supabase
+        .from('user_push_tokens')
+        .select('token')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+
+      if (!error && Array.isArray(data)) {
+        data.forEach((item) => {
+          if (item.token) tokens.add(item.token);
+        });
+      }
+    } catch (_) {}
+
+    // 2. Fallback / check legacy users.fcm_token
+    try {
+      const legacyToken = await this.getUserFCMToken(userId);
+      if (legacyToken) {
+        tokens.add(legacyToken);
+      }
+    } catch (_) {}
+
+    return Array.from(tokens);
+  }
+
+  // ─────────────────────────────────────────
+  // Deactivate an invalid or expired push token
+  // ─────────────────────────────────────────
+  async deactivateInvalidToken(token) {
+    try {
+      await this.supabase
+        .from('user_push_tokens')
+        .update({ is_active: false })
+        .eq('token', token);
+    } catch (_) {}
+
+    try {
+      await this.supabase
+        .from('users')
+        .update({ fcm_token: null })
+        .eq('fcm_token', token);
+    } catch (_) {}
   }
 
   // ─────────────────────────────────────────
@@ -156,6 +207,40 @@ class NotificationRepository {
 
     if (error) {
       logger.error({ error }, 'deleteOldNotifications failed');
+      throw error;
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // Delete single notification for user
+  // ─────────────────────────────────────────
+  async deleteNotification(userId, notificationId) {
+    const { data, error } = await this.supabase
+      .from('notifications')
+      .delete()
+      .eq('id', notificationId)
+      .eq('user_id', userId)
+      .select('id, is_read');
+
+    if (error) {
+      logger.error({ error, userId, notificationId }, 'deleteNotification failed');
+      throw error;
+    }
+
+    return data && data.length > 0 ? data[0] : null;
+  }
+
+  // ─────────────────────────────────────────
+  // Delete all notifications for user
+  // ─────────────────────────────────────────
+  async deleteAllNotifications(userId) {
+    const { error } = await this.supabase
+      .from('notifications')
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) {
+      logger.error({ error, userId }, 'deleteAllNotifications failed');
       throw error;
     }
   }

@@ -23,6 +23,24 @@ async function notificationRoutes(fastify) {
     preHandler: [authenticate],
     handler: ctrl.markAsRead.bind(ctrl),
   });
+
+  // DELETE /notifications/:id
+  fastify.delete('/:id', {
+    preHandler: [authenticate],
+    handler: ctrl.deleteNotification.bind(ctrl),
+  });
+
+  // DELETE /notifications
+  fastify.delete('/', {
+    preHandler: [authenticate],
+    handler: ctrl.deleteAllNotifications.bind(ctrl),
+  });
+
+  // DELETE /notifications/clear-all
+  fastify.delete('/clear-all', {
+    preHandler: [authenticate],
+    handler: ctrl.deleteAllNotifications.bind(ctrl),
+  });
 }
 
 module.exports = notificationRoutes;
