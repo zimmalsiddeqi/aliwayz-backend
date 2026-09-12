@@ -506,14 +506,26 @@ class ChatGateway {
   // EMIT QR SCAN RESULT to conversation room
   // Called by QR service after successful scan
   // ─────────────────────────────────────────
-  emitQRScanned(conversationId, productId, buyerId, sellerId) {
-    this.io.to(`conversation:${conversationId}`).emit('qr_scanned', {
+  emitQRScanned(conversationId, productId, buyerId, sellerId, transactionId) {
+    const data = {
       conversationId,
       productId,
+      sellerId,
+      buyerId,
+      transactionId,
       status:    'completed',
       message:   'Sale completed successfully! Please leave a review.',
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    const targetRooms = [`conversation:${conversationId}`];
+    if (sellerId) targetRooms.push(`user:${sellerId}`);
+    if (buyerId) targetRooms.push(`user:${buyerId}`);
+
+    for (const room of targetRooms) {
+      this.io.to(room).emit('qr_scanned', data);
+      this.io.to(room).emit('sale_completed', data);
+    }
   }
 
   // ─────────────────────────────────────────

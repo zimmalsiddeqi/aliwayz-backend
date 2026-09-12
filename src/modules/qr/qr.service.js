@@ -378,14 +378,27 @@ class QRService {
 
     // ── Emit socket event to both parties ───────
     if (this.fastify && this.fastify.chatGateway) {
-      this.fastify.chatGateway.io
-        .to(`conversation:${payload.conversationId}`)
-        .emit('sale_completed', {
-          productId: payload.productId,
-          transactionId: qrTransactionId,
-          sellerId: payload.sellerId,
-          buyerId: payload.buyerId
-        });
+      const eventData = {
+        conversationId: payload.conversationId,
+        productId:      payload.productId,
+        transactionId:  qrTransactionId,
+        sellerId:       payload.sellerId,
+        buyerId:        payload.buyerId,
+        status:         'completed',
+        message:        'Sale completed successfully! Please leave a review.',
+        timestamp:      new Date().toISOString(),
+      };
+
+      const targetRooms = [
+        `conversation:${payload.conversationId}`,
+        `user:${payload.sellerId}`,
+        `user:${payload.buyerId}`,
+      ];
+
+      for (const room of targetRooms) {
+        this.fastify.chatGateway.io.to(room).emit('sale_completed', eventData);
+        this.fastify.chatGateway.io.to(room).emit('qr_scanned', eventData);
+      }
     }
 
     // ── Send push notification to seller ─────────────────────
