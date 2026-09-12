@@ -35,6 +35,13 @@ async function chatRoutes(fastify) {
     handler: ctrl.getMessages.bind(ctrl),
   });
 
+  // POST /conversations/:id/messages
+  fastify.post('/:id/messages', {
+    config: { rateLimit: { max: 60, timeWindow: '1m' } },
+    preHandler: [authenticate, sanitizeInput],
+    handler: ctrl.sendMessage.bind(ctrl),
+  });
+
   // DELETE /conversations/:id
   fastify.delete('/:id', {
     preHandler: [authenticate],

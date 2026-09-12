@@ -82,6 +82,20 @@ class ChatController {
     return reply.send(paginatedResponse(result.data, result.pagination));
   }
 
+  // POST /conversations/:id/messages
+  async sendMessage(request, reply) {
+    const { content } = request.body || {};
+    if (!content || !content.trim()) {
+      throw new ValidationError('Message content is required');
+    }
+    const message = await this.chatService.sendMessage(
+      request.user.id,
+      request.params.id,
+      content.trim()
+    );
+    return reply.status(201).send(successResponse(message, 'Message sent'));
+  }
+
   // DELETE /conversations/:id
   async archiveConversation(request, reply) {
     const result = await this.chatService.archiveConversation(
