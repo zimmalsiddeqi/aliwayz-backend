@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const WantedRepository = require('./wanted.repository');
 const { getPaginationParams } = require('../../shared/utils/paginate');
@@ -67,13 +67,19 @@ class WantedService {
 
     const totalPages = Math.ceil(total / limit);
 
+    // Filter out requests posted by users with role 'seller' or 'both' for public Wanted feed
+    const filteredData = (data || []).filter((req) => {
+      const creatorRole = req.users?.role;
+      return !creatorRole || creatorRole === 'buyer';
+    });
+
     return {
-      data,
+      data: filteredData,
       pagination: {
-        total,
+        total: filteredData.length,
         page,
         limit,
-        totalPages,
+        totalPages: Math.ceil(filteredData.length / limit) || 1,
         hasNext: page < totalPages,
         hasPrev: page > 1,
       },
@@ -97,10 +103,11 @@ class WantedService {
     if (!request) {
       throw new NotFoundError('Wanted Request');
     }
-    if (request.buyer_id !== userId) {
+    const creatorId = request.buyer_id || request.users?.id;
+    if (creatorId !== userId) {
       throw new AppError('Unauthorized to update this request', 403);
     }
-    return this.repo.updateStatus(id, userId, status);
+    return this.repo.updateStatus(id, creatorId, status);
   }
 
   async submitMatch(sellerId, wantedRequestId, data) {
@@ -120,22 +127,43 @@ class WantedService {
       message: data.message || '',
     });
 
-    // Create notification for the buyer
-    try {
-      await this.supabase.from('notifications').insert({
-        user_id: request.buyer_id,
-        type: 'wanted_match',
-        title: 'New match for your wanted request!',
-        body: `A seller responded to your request "${request.title}".`,
-        data: {
-          wanted_request_id: wantedRequestId,
-          match_id: match.id,
-          product_id: data.product_id || null,
-          seller_id: sellerId,
-        },
-      });
-    } catch (notifErr) {
-      logger.warn({ notifErr }, 'Failed to send notification for wanted match');
+    // Create in-app and push notification for the buyer if inform_buyer is enabled
+    if (data.inform_buyer !== false) {
+      try {
+        const NotificationService = require('../notifications/notification.service');
+        const notifService = new NotificationService(this.supabase, this.redis);
+
+        let matchedItemTitle = '';
+        if (data.product_id) {
+          const { data: prod } = await this.supabase
+            .from('products')
+            .select('title, price')
+            .eq('id', data.product_id)
+            .single();
+          if (prod?.title) matchedItemTitle = prod.title;
+        }
+
+        const noteText = data.message ? ` "${data.message.slice(0, 80)}"` : '';
+        const body = matchedItemTitle
+          ? `A seller matched your request "${request.title}" with "${matchedItemTitle}".${noteText}`
+          : `A seller matched your request "${request.title}".${noteText}`;
+
+        await notifService.createNotification({
+          userId: request.buyer_id,
+          type: 'wanted_match',
+          title: 'New match for your wanted request!',
+          body,
+          data: {
+            wanted_request_id: wantedRequestId,
+            match_id: match.id,
+            product_id: data.product_id || null,
+            seller_id: sellerId,
+            route: '/wanted/my-requests',
+          },
+        });
+      } catch (notifErr) {
+        logger.warn({ notifErr }, 'Failed to send notification for wanted match');
+      }
     }
 
     logger.info({ sellerId, wantedRequestId, matchId: match.id }, 'Match submitted for wanted request');

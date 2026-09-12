@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const { z } = require('zod');
 
@@ -32,6 +32,7 @@ const updateWantedStatusSchema = z.object({
 const submitMatchSchema = z.object({
   product_id: z.string().uuid().optional(),
   message: z.string().max(1000).trim().optional(),
+  inform_buyer: z.boolean().optional().default(true),
 });
 
 module.exports = {

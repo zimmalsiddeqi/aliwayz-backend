@@ -40,7 +40,8 @@ class WantedRepository {
         username,
         full_name,
         avatar_url,
-        location_city
+        location_city,
+        role
       )
     `;
   }
