@@ -22,7 +22,7 @@ class ChatGateway {
     // JWT authentication middleware for socket connections
     this.io.use(async (socket, next) => {
       try {
-        const token =
+        let token =
           socket.handshake.auth?.token ||
           socket.handshake.query?.token ||
           socket.handshake.headers.authorization?.split(' ')[1];
@@ -31,19 +31,31 @@ class ChatGateway {
           return next(new Error('Authentication token required'));
         }
 
+        if (typeof token === 'string' && token.startsWith('Bearer ')) {
+          token = token.slice(7).trim();
+        }
+
         // Verify JWT using fastify.jwt
         const decoded = this.fastify.jwt.verify(token);
 
-        // Verify user is active
-        const { data: user, error } = await this.supabase
+        // Verify user is not banned or suspended
+        let { data: user, error } = await this.supabase
           .from('users')
           .select('id, username, role, account_status, avatar_url')
           .eq('id', decoded.id)
-          .eq('account_status', 'active')
           .eq('is_deleted', false)
-          .single();
+          .maybeSingle();
 
-        if (error || !user) {
+        if (!user) {
+          const { data: adminUser } = await this.supabase
+            .from('admins')
+            .select('id, username, role, account_status, avatar_url')
+            .eq('id', decoded.id)
+            .maybeSingle();
+          if (adminUser) user = adminUser;
+        }
+
+        if (!user || user.account_status === 'banned' || user.account_status === 'suspended') {
           return next(new Error('User not found or account inactive'));
         }
 
@@ -142,41 +154,72 @@ class ChatGateway {
         });
       }
 
-      // Join the Socket.io room for this conversation
+      // Join the Socket.io room for this conversation unconditionally
       await socket.join(`conversation:${conversationId}`);
 
-      // Track active room members in Redis
-      await this.redis.client.sadd(
-        `conv:members:${conversationId}`,
-        socket.user.id
-      );
+      // Track active room members safely
+      try {
+        if (this.redis?.client && typeof this.redis.client.sadd === 'function') {
+          await this.redis.client.sadd(
+            `conv:members:${conversationId}`,
+            socket.user.id
+          );
+        }
+      } catch (redisErr) {
+        // Safe fallback
+      }
 
       // Mark messages as read upon joining
-      await this.chatService['repo'].markMessagesRead(
-        conversationId,
-        socket.user.id
-      );
+      try {
+        await this.chatService['repo'].markMessagesRead(
+          conversationId,
+          socket.user.id
+        );
+      } catch (readErr) {
+        // Safe fallback
+      }
 
-      // Broadcast read event to room so sender gets blue checkmark immediately
+      // Broadcast read event to room so sender gets blue double tick immediately
       this.io.to(`conversation:${conversationId}`).emit('messages_read', {
         conversationId,
         readBy: socket.user.id,
         readAt: new Date().toISOString(),
       });
 
-      // Notify the room that user is active
+      // Broadcast online presence to room
+      this.io.to(`conversation:${conversationId}`).emit('user_online', {
+        userId: socket.user.id,
+      });
+
       socket.to(`conversation:${conversationId}`).emit('participant_joined', {
         userId:   socket.user.id,
         username: socket.user.username,
       });
 
+      // Check if other participant is online and inform joining socket
+      let isOtherOnline = false;
+      try {
+        const conv = await this.chatService['repo'].findConversationById(conversationId);
+        const otherId = conv?.buyer_id === socket.user.id ? conv?.seller_id : conv?.buyer_id;
+        if (otherId) {
+          const sockets = await this.io.in(`user:${otherId}`).fetchSockets();
+          isOtherOnline = sockets.length > 0;
+          if (isOtherOnline) {
+            socket.emit('user_online', { userId: otherId });
+          }
+        }
+      } catch (presenceErr) {
+        // Safe fallback
+      }
+
       socket.emit('joined_conversation', {
         conversationId,
         message: 'Joined conversation successfully',
+        isOtherOnline,
       });
 
       logger.info(
-        { userId: socket.user.id, conversationId },
+        { userId: socket.user.id, conversationId, isOtherOnline },
         'User joined conversation room'
       );
     } catch (err) {
@@ -193,11 +236,17 @@ class ChatGateway {
       const { conversationId } = data;
       await socket.leave(`conversation:${conversationId}`);
 
-      // Remove from active members
-      await this.redis.client.srem(
-        `conv:members:${conversationId}`,
-        socket.user.id
-      );
+      // Remove from active members safely
+      try {
+        if (this.redis?.client && typeof this.redis.client.srem === 'function') {
+          await this.redis.client.srem(
+            `conv:members:${conversationId}`,
+            socket.user.id
+          );
+        }
+      } catch (redisErr) {
+        // Safe fallback
+      }
 
       socket.to(`conversation:${conversationId}`).emit('participant_left', {
         userId: socket.user.id,
@@ -247,6 +296,14 @@ class ChatGateway {
         this.io.to(`user:${recipientId}`).emit('message_received', {
           message,
           conversationId,
+        });
+
+        this.io.to(`user:${recipientId}`).emit('new_notification', {
+          title: `New message from ${socket.user.username || 'user'}`,
+          body: content.trim(),
+          type: 'chat_message',
+          conversationId,
+          senderId: socket.user.id,
         });
       }
 
@@ -334,34 +391,52 @@ class ChatGateway {
   // ─────────────────────────────────────────
   // TYPING START
   // ─────────────────────────────────────────
-  _handleTypingStart(socket, data) {
+  async _handleTypingStart(socket, data) {
     const { conversationId } = data;
     if (!conversationId) return;
 
-    const roomName = `conversation:${conversationId}`;
-    if (!socket.rooms.has(roomName)) return;
-
-    socket.to(roomName).emit('user_typing', {
+    const payload = {
       userId:         socket.user.id,
       username:       socket.user.username,
       conversationId,
-    });
+    };
+
+    socket.to(`conversation:${conversationId}`).emit('user_typing', payload);
+
+    try {
+      const conv = await this.chatService['repo'].findConversationById(conversationId);
+      const recipientId = conv?.buyer_id === socket.user.id ? conv?.seller_id : conv?.buyer_id;
+      if (recipientId) {
+        this.io.to(`user:${recipientId}`).emit('user_typing', payload);
+      }
+    } catch (e) {
+      // Safe fallback
+    }
   }
 
   // ─────────────────────────────────────────
   // TYPING STOP
   // ─────────────────────────────────────────
-  _handleTypingStop(socket, data) {
+  async _handleTypingStop(socket, data) {
     const { conversationId } = data;
     if (!conversationId) return;
 
-    const roomName = `conversation:${conversationId}`;
-    if (!socket.rooms.has(roomName)) return;
-
-    socket.to(roomName).emit('user_stop_typing', {
+    const payload = {
       userId:         socket.user.id,
       conversationId,
-    });
+    };
+
+    socket.to(`conversation:${conversationId}`).emit('user_stop_typing', payload);
+
+    try {
+      const conv = await this.chatService['repo'].findConversationById(conversationId);
+      const recipientId = conv?.buyer_id === socket.user.id ? conv?.seller_id : conv?.buyer_id;
+      if (recipientId) {
+        this.io.to(`user:${recipientId}`).emit('user_stop_typing', payload);
+      }
+    } catch (e) {
+      // Safe fallback
+    }
   }
 
   // ─────────────────────────────────────────
@@ -392,6 +467,8 @@ class ChatGateway {
   // ─────────────────────────────────────────
   async _handlePingPresence(socket) {
     await this._setUserOnline(socket.user.id, socket.id);
+    socket.broadcast.emit('user_online', { userId: socket.user.id });
+    socket.emit('presence_ack', { status: 'online', timestamp: Date.now() });
   }
 
   // ─────────────────────────────────────────
@@ -456,11 +533,17 @@ class ChatGateway {
   // PRIVATE: Set user online in Redis
   // ─────────────────────────────────────────
   async _setUserOnline(userId, socketId) {
-    await this.redis.set(
-      CACHE_KEYS.USER_ONLINE(userId),
-      { socketId, timestamp: Date.now() },
-      CACHE_TTL.USER_ONLINE
-    );
+    try {
+      if (this.redis && typeof this.redis.set === 'function') {
+        await this.redis.set(
+          CACHE_KEYS.USER_ONLINE(userId),
+          { socketId, timestamp: Date.now() },
+          CACHE_TTL.USER_ONLINE
+        );
+      }
+    } catch (e) {
+      // Safe fallback
+    }
   }
 }
 

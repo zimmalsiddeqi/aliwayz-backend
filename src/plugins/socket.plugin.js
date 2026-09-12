@@ -12,9 +12,10 @@ async function socketPlugin(fastify) {
   // Create Socket.io server
   const io = new Server(fastify.server, {
     cors: {
-      origin: process.env.ALLOWED_ORIGINS
-        ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
-        : ['http://localhost:3000'],
+      origin: (origin, callback) => {
+        // Allow all origins (web browsers, mobile, localhost, Vercel)
+        callback(null, true);
+      },
       methods: ['GET', 'POST'],
       credentials: true,
     },
@@ -104,5 +105,5 @@ async function socketPlugin(fastify) {
 
 module.exports = fp(socketPlugin, {
   name: 'socket-plugin',
-  dependencies: ['redis-plugin', 'supabase-plugin'],
+  dependencies: ['redis-plugin', 'supabase-plugin', 'auth-plugin'],
 });

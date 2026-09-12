@@ -93,6 +93,35 @@ class ChatController {
       request.params.id,
       content.trim()
     );
+
+    // Broadcast through socket so recipient sees it in real-time even via HTTP
+    try {
+      if (this.fastify.io) {
+        this.fastify.io.to(`conversation:${request.params.id}`).emit('message_received', {
+          message,
+          conversationId: request.params.id,
+        });
+
+        const conv = await this.chatService['repo'].findConversationById(request.params.id);
+        const recipientId = conv?.buyer_id === request.user.id ? conv?.seller_id : conv?.buyer_id;
+        if (recipientId) {
+          this.fastify.io.to(`user:${recipientId}`).emit('message_received', {
+            message,
+            conversationId: request.params.id,
+          });
+          this.fastify.io.to(`user:${recipientId}`).emit('new_notification', {
+            title: `New message from ${request.user.username || 'user'}`,
+            body: content.trim(),
+            type: 'chat_message',
+            conversationId: request.params.id,
+            senderId: request.user.id,
+          });
+        }
+      }
+    } catch (broadcastErr) {
+      // Safe fallback
+    }
+
     return reply.status(201).send(successResponse(message, 'Message sent'));
   }
 
