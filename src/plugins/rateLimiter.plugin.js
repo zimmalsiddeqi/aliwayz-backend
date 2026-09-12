@@ -5,11 +5,10 @@ const appConfig = require('../config/app.config');
 const logger = require('../shared/utils/logger');
 
 async function rateLimiterPlugin(fastify) {
-  await fastify.register(require('@fastify/rate-limit'), {
+  const rateLimitOpts = {
     global: true,
     max: appConfig.rateLimit.max,
     timeWindow: appConfig.rateLimit.windowMs,
-    redis: fastify.redisClient,
     keyGenerator: (request) => {
       // Bypass rate limit in tests by generating a unique key per request
       if (process.env.NODE_ENV === 'test') {
@@ -32,7 +31,14 @@ async function rateLimiterPlugin(fastify) {
     },
     // Stricter limits for auth endpoints
     allowList: [],
-  });
+  };
+
+  // Only use Redis store if Redis is actively connected and ready
+  if (typeof fastify.isRedisConnected === 'function' && fastify.isRedisConnected() && fastify.redisClient?.status === 'ready') {
+    rateLimitOpts.redis = fastify.redisClient;
+  }
+
+  await fastify.register(require('@fastify/rate-limit'), rateLimitOpts);
 }
 
 module.exports = fp(rateLimiterPlugin, {

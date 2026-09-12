@@ -56,7 +56,7 @@ const buildApp = async () => {
         }
       }
 
-      // Check allowedOrigins list, aliwayz.com, or *.vercel.app domains
+      // Check allowedOrigins list, aliwayz.com, *.vercel.app, *.up.railway.app domains
       if (
         appConfig.cors.allowedOrigins.includes("*") ||
         appConfig.cors.allowedOrigins.includes(origin) ||
@@ -64,6 +64,7 @@ const buildApp = async () => {
         origin === "https://www.aliwayz.com" ||
         origin.endsWith(".aliwayz.com") ||
         origin.endsWith(".vercel.app") ||
+        origin.endsWith(".up.railway.app") ||
         origin.startsWith("http://localhost") ||
         origin.startsWith("http://127.0.0.1")
       ) {
@@ -136,9 +137,13 @@ const buildApp = async () => {
   fastify.get("/health", async (request, reply) => {
     let redisStatus = "ok";
     try {
-      await fastify.redisClient.ping();
+      if (typeof fastify.isRedisConnected === 'function' && fastify.isRedisConnected() && fastify.redisClient?.status === 'ready') {
+        await fastify.redisClient.ping();
+      } else {
+        redisStatus = "in-memory";
+      }
     } catch {
-      redisStatus = "error";
+      redisStatus = "in-memory";
     }
 
     let dbStatus = "ok";
@@ -152,11 +157,10 @@ const buildApp = async () => {
       dbStatus = "error";
     }
 
-    const status =
-      redisStatus === "ok" && dbStatus === "ok" ? "ok" : "degraded";
+    const isHealthy = dbStatus === "ok";
 
-    return reply.status(status === "ok" ? 200 : 503).send({
-      status,
+    return reply.status(isHealthy ? 200 : 503).send({
+      status: isHealthy ? "ok" : "degraded",
       timestamp: new Date().toISOString(),
       version: appConfig.apiVersion,
       services: {
