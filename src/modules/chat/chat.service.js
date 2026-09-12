@@ -227,24 +227,20 @@ if (initial_message && initial_message.trim()) {
         ? conversation.seller_id
         : conversation.buyer_id;
 
-    const isOnline = await this.redis.exists(CACHE_KEYS.USER_ONLINE(recipientId));
+    // Create in-app system notification for recipient so it appears in Notifications center & inbox
+    const { data: sender } = await this.supabase
+      .from('users')
+      .select('username')
+      .eq('id', senderId)
+      .single();
 
-    if (!isOnline) {
-      // Get sender info for notification
-      const { data: sender } = await this.supabase
-        .from('users')
-        .select('username')
-        .eq('id', senderId)
-        .single();
-
-      await this.notificationService.createNotification({
-        userId: recipientId,
-        type: constants.NOTIFICATION_TYPES.NEW_MESSAGE,
-        title: `New message from ${sender?.username || 'Someone'}`,
-        body: content.length > 50 ? `${content.substring(0, 50)}...` : content,
-        data: { conversationId },
-      });
-    }
+    await this.notificationService.createNotification({
+      userId: recipientId,
+      type: constants.NOTIFICATION_TYPES.NEW_MESSAGE || 'chat_message',
+      title: `New message from ${sender?.username || 'user'}`,
+      body: content.length > 60 ? `${content.substring(0, 60)}...` : content,
+      data: { conversationId, senderId },
+    }).catch((err) => logger.warn({ err }, 'Notification creation failed'));
 
     return message;
   }

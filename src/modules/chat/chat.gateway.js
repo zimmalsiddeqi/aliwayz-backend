@@ -74,6 +74,9 @@ class ChatGateway {
     // Mark user as online in Redis
     this._setUserOnline(user.id, socket.id);
 
+    // Join user's personal room for direct notification delivery
+    socket.join(`user:${user.id}`);
+
     // Broadcast online status to relevant users
     socket.broadcast.emit('user_online', { userId: user.id });
 
@@ -220,11 +223,24 @@ class ChatGateway {
         content.trim()
       );
 
-      // Emit to all participants in the room (including sender)
+      // Emit to conversation room (if both joined)
       this.io.to(`conversation:${conversationId}`).emit('message_received', {
         message,
         conversationId,
       });
+
+      // Also broadcast directly to recipient user room for instant cross-app notification
+      const recipientId =
+        message.buyer_id === socket.user.id
+          ? message.seller_id
+          : message.buyer_id;
+
+      if (recipientId) {
+        this.io.to(`user:${recipientId}`).emit('message_received', {
+          message,
+          conversationId,
+        });
+      }
 
       // Acknowledge to sender
       socket.emit('message_sent', {
