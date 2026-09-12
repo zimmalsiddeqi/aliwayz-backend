@@ -198,9 +198,10 @@ class ChatGateway {
 
       // Check if other participant is online and inform joining socket
       let isOtherOnline = false;
+      let otherId = null;
       try {
         const conv = await this.chatService['repo'].findConversationById(conversationId);
-        const otherId = conv?.buyer_id === socket.user.id ? conv?.seller_id : conv?.buyer_id;
+        otherId = conv?.buyer_id === socket.user.id ? conv?.seller_id : conv?.buyer_id;
         if (otherId) {
           const sockets = await this.io.in(`user:${otherId}`).fetchSockets();
           isOtherOnline = sockets.length > 0;
@@ -216,10 +217,11 @@ class ChatGateway {
         conversationId,
         message: 'Joined conversation successfully',
         isOtherOnline,
+        otherUserId: otherId,
       });
 
       logger.info(
-        { userId: socket.user.id, conversationId, isOtherOnline },
+        { userId: socket.user.id, conversationId, isOtherOnline, otherUserId: otherId },
         'User joined conversation room'
       );
     } catch (err) {
