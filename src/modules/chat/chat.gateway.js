@@ -157,6 +157,13 @@ class ChatGateway {
         socket.user.id
       );
 
+      // Broadcast read event to room so sender gets blue checkmark immediately
+      this.io.to(`conversation:${conversationId}`).emit('messages_read', {
+        conversationId,
+        readBy: socket.user.id,
+        readAt: new Date().toISOString(),
+      });
+
       // Notify the room that user is active
       socket.to(`conversation:${conversationId}`).emit('participant_joined', {
         userId:   socket.user.id,
@@ -229,11 +236,12 @@ class ChatGateway {
         conversationId,
       });
 
-      // Also broadcast directly to recipient user room for instant cross-app notification
+      // Get conversation details for correct recipient ID
+      const conv = await this.chatService['repo'].findConversationById(conversationId);
       const recipientId =
-        message.buyer_id === socket.user.id
-          ? message.seller_id
-          : message.buyer_id;
+        conv?.buyer_id === socket.user.id
+          ? conv?.seller_id
+          : conv?.buyer_id;
 
       if (recipientId) {
         this.io.to(`user:${recipientId}`).emit('message_received', {
@@ -369,7 +377,7 @@ class ChatGateway {
         socket.user.id
       );
 
-      socket.to(`conversation:${conversationId}`).emit('messages_read', {
+      this.io.to(`conversation:${conversationId}`).emit('messages_read', {
         conversationId,
         readBy: socket.user.id,
         readAt: new Date().toISOString(),
