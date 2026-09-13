@@ -17,6 +17,7 @@ const {
   phoneVerifyRequestSchema,
   phoneVerifyConfirmSchema,
   completeProfileSchema,
+  legalConsentSchema,
 } = require('./auth.schema');
 
 const ValidationError = require('../../shared/errors/ValidationError');
@@ -207,6 +208,28 @@ class AuthController {
       request.user.id,
       request.params.id
     );
+    return reply.send(successResponse(result));
+  }
+
+  // ─────────────────────────────────────────
+  // POST /auth/legal-consent
+  // ─────────────────────────────────────────
+  async recordLegalConsent(request, reply) {
+    const data = this._validate(legalConsentSchema, request.body || {});
+    const deviceInfo = this._getDeviceInfo(request);
+    const result = await this.authService.recordConsent(
+      request.user.id,
+      data,
+      deviceInfo
+    );
+    return reply.send(successResponse(result, 'Legal consent recorded successfully'));
+  }
+
+  // ─────────────────────────────────────────
+  // GET /auth/legal-consent
+  // ─────────────────────────────────────────
+  async getLegalConsentStatus(request, reply) {
+    const result = await this.authService.getConsentStatus(request.user.id);
     return reply.send(successResponse(result));
   }
 }

@@ -1,0 +1,9 @@
+'use strict';
+
+const CURRENT_TERMS_VERSION = '2026-10-15';
+const CURRENT_PRIVACY_VERSION = '2026-10-15';
+
+module.exports = {
+  CURRENT_TERMS_VERSION,
+  CURRENT_PRIVACY_VERSION,
+};

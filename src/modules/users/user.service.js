@@ -16,6 +16,7 @@ const NotFoundError = require('../../shared/errors/NotFoundError');
 
 const { CACHE_KEYS, CACHE_TTL } = require('../../shared/constants/cacheKeys');
 const { ROLES, SELLER_ROLES } = require('../../shared/constants/roles');
+const { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } = require('../../shared/constants/legal');
 const { getPaginationParams } = require('../../shared/utils/paginate');
 const constants = require('../../config/constants');
 
@@ -38,6 +39,17 @@ class UserService {
     // Filter only active badges for response
     if (profile.user_badges) {
       profile.user_badges = profile.user_badges.filter((ub) => ub.is_active);
+    }
+
+    // Attach legal consent status
+    try {
+      profile.has_current_consent = await this.authRepo.hasValidConsent(
+        userId,
+        CURRENT_TERMS_VERSION,
+        CURRENT_PRIVACY_VERSION
+      );
+    } catch (err) {
+      profile.has_current_consent = true;
     }
 
     return profile;

@@ -476,6 +476,73 @@ class AuthRepository {
     }
     return data || null;
   }
+
+  // ─────────────────────────────────────────
+  // Record legal consent (Terms & Privacy acceptance)
+  // ─────────────────────────────────────────
+  async recordLegalConsent({ userId, termsVersion, privacyVersion, ipAddress, userAgent, source = 'signup' }) {
+    const { data, error } = await this.supabase
+      .from('legal_consents')
+      .insert({
+        user_id: userId,
+        terms_version: termsVersion,
+        privacy_version: privacyVersion,
+        ip_address: ipAddress || null,
+        user_agent: userAgent || null,
+        source: source || 'signup',
+        accepted_at: new Date().toISOString(),
+      })
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      logger.error({ error, userId, termsVersion, privacyVersion }, 'recordLegalConsent failed');
+      throw error;
+    }
+
+    return data || null;
+  }
+
+  // ─────────────────────────────────────────
+  // Get latest legal consent record for a user
+  // ─────────────────────────────────────────
+  async getLatestLegalConsent(userId) {
+    const { data, error } = await this.supabase
+      .from('legal_consents')
+      .select('id, user_id, terms_version, privacy_version, accepted_at, source')
+      .eq('user_id', userId)
+      .order('accepted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      logger.error({ error, userId }, 'getLatestLegalConsent failed');
+      return null;
+    }
+
+    return data || null;
+  }
+
+  // ─────────────────────────────────────────
+  // Check if user has consented to current versions
+  // ─────────────────────────────────────────
+  async hasValidConsent(userId, termsVersion, privacyVersion) {
+    const { data, error } = await this.supabase
+      .from('legal_consents')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('terms_version', termsVersion)
+      .eq('privacy_version', privacyVersion)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      logger.warn({ error, userId }, 'hasValidConsent check error');
+      return false;
+    }
+
+    return !!data;
+  }
 }
 
 module.exports = AuthRepository;

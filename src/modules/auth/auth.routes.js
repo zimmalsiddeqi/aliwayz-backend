@@ -23,6 +23,8 @@ async function authRoutes(fastify) {
   const completeProfile = ctrl.completeProfile.bind(ctrl);
   const getDevices = ctrl.getDevices.bind(ctrl);
   const revokeDevice = ctrl.revokeDevice.bind(ctrl);
+  const recordLegalConsent = ctrl.recordLegalConsent.bind(ctrl);
+  const getLegalConsentStatus = ctrl.getLegalConsentStatus.bind(ctrl);
 
   // ─────────────────────────────────────────
   // Public routes (no auth required)
@@ -116,6 +118,17 @@ async function authRoutes(fastify) {
   fastify.delete('/devices/:id', {
     preHandler: [authenticate],
     handler: revokeDevice,
+  });
+
+  fastify.post('/legal-consent', {
+    config: { rateLimit: { max: 10, timeWindow: '10m' } },
+    preHandler: [authenticate, sanitizeInput],
+    handler: recordLegalConsent,
+  });
+
+  fastify.get('/legal-consent', {
+    preHandler: [authenticate],
+    handler: getLegalConsentStatus,
   });
 }
 

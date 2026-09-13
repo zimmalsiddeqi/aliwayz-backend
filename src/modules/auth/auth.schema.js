@@ -42,6 +42,7 @@ const signupSchema = z.object({
   username: usernameField,
   full_name: z.string().min(2).max(100).trim().optional(),
   role: z.enum(['buyer', 'seller', 'both']).default('buyer'),
+  terms_accepted: z.boolean().optional(),
 });
 
 const loginSchema = z.object({
@@ -122,6 +123,12 @@ const completeProfileSchema = z.object({
   location_lng: z.number().min(-180).max(180).optional(),
 });
 
+const legalConsentSchema = z.object({
+  terms_version: z.string().min(1).default('2026-10-15'),
+  privacy_version: z.string().min(1).default('2026-10-15'),
+  source: z.string().max(50).default('reacceptance'),
+});
+
 module.exports = {
   signupSchema,
   loginSchema,
@@ -135,4 +142,5 @@ module.exports = {
   phoneVerifyRequestSchema,
   phoneVerifyConfirmSchema,
   completeProfileSchema,
+  legalConsentSchema,
 };

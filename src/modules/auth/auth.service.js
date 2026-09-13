@@ -18,6 +18,7 @@ const UnauthorizedError = require("../../shared/errors/UnauthorizedError");
 
 const { CACHE_KEYS } = require("../../shared/constants/cacheKeys");
 const { ROLES } = require("../../shared/constants/roles");
+const { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } = require("../../shared/constants/legal");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -416,6 +417,21 @@ async signup(data, deviceInfo = {}) {
     }
   }
 
+  // ── Step 4b: Record legal consent ────────────────────
+  try {
+    await this.repo.recordLegalConsent({
+      userId: newUser.id,
+      termsVersion: CURRENT_TERMS_VERSION,
+      privacyVersion: CURRENT_PRIVACY_VERSION,
+      ipAddress: deviceInfo.ipAddress,
+      userAgent: deviceInfo.userAgent,
+      source: 'signup',
+    });
+    logger.info({ userId: newUser.id }, 'Legal consent recorded for signup');
+  } catch (consentErr) {
+    logger.warn({ consentErr, userId: newUser.id }, 'Failed to record legal consent on signup');
+  }
+
   // ── Step 5: Issue tokens ──────────────────────────────
   const { accessToken, refreshToken } = await this._issueTokenPair(
     newUser,
@@ -432,6 +448,7 @@ async signup(data, deviceInfo = {}) {
     access_token:                accessToken,
     refresh_token:               refreshToken,
     requires_email_verification: appConfig.isProduction,
+    has_current_consent:         true,
   };
 }
 
@@ -562,13 +579,20 @@ async login(data, deviceInfo = {}) {
     deviceInfo
   );
 
-  logger.info({ userId: user.id }, 'User logged in successfully');
+  const hasCurrentConsent = await this.repo.hasValidConsent(
+    user.id,
+    CURRENT_TERMS_VERSION,
+    CURRENT_PRIVACY_VERSION
+  );
+
+  logger.info({ userId: user.id, hasCurrentConsent }, 'User logged in successfully');
 
   return {
     user:                       this._formatUserResponse(user),
     access_token:               accessToken,
     refresh_token:              refreshToken,
     requires_email_verification: !user.email_verified,
+    has_current_consent:        hasCurrentConsent,
   };
 }
   // ─────────────────────────────────────────
@@ -678,6 +702,16 @@ async login(data, deviceInfo = {}) {
           .evaluateAndAssignBadges(user.id, "signup")
           .catch(() => {});
       }
+
+      // Record legal consent for new OAuth user
+      await this.repo.recordLegalConsent({
+        userId: user.id,
+        termsVersion: CURRENT_TERMS_VERSION,
+        privacyVersion: CURRENT_PRIVACY_VERSION,
+        ipAddress: deviceInfo.ipAddress,
+        userAgent: deviceInfo.userAgent,
+        source: 'google_oauth',
+      }).catch((err) => logger.warn({ err, userId: user.id }, 'OAuth consent record failed'));
     }
 
     const { accessToken, refreshToken } = await this._issueTokenPair(
@@ -685,10 +719,17 @@ async login(data, deviceInfo = {}) {
       deviceInfo,
     );
 
+    const hasCurrentConsent = await this.repo.hasValidConsent(
+      user.id,
+      CURRENT_TERMS_VERSION,
+      CURRENT_PRIVACY_VERSION
+    );
+
     return {
       user: this._formatUserResponse(user),
       access_token: accessToken,
       refresh_token: refreshToken,
+      has_current_consent: hasCurrentConsent,
     };
   }
 
@@ -801,6 +842,16 @@ async login(data, deviceInfo = {}) {
           .evaluateAndAssignBadges(user.id, "signup")
           .catch(() => {});
       }
+
+      // Record legal consent for new Apple OAuth user
+      await this.repo.recordLegalConsent({
+        userId: user.id,
+        termsVersion: CURRENT_TERMS_VERSION,
+        privacyVersion: CURRENT_PRIVACY_VERSION,
+        ipAddress: deviceInfo.ipAddress,
+        userAgent: deviceInfo.userAgent,
+        source: 'apple_oauth',
+      }).catch((err) => logger.warn({ err, userId: user.id }, 'Apple OAuth consent record failed'));
     }
 
     const { accessToken, refreshToken } = await this._issueTokenPair(
@@ -808,10 +859,17 @@ async login(data, deviceInfo = {}) {
       deviceInfo
     );
 
+    const hasCurrentConsent = await this.repo.hasValidConsent(
+      user.id,
+      CURRENT_TERMS_VERSION,
+      CURRENT_PRIVACY_VERSION
+    );
+
     return {
       user: this._formatUserResponse(user),
       access_token: accessToken,
       refresh_token: refreshToken,
+      has_current_consent: hasCurrentConsent,
     };
   }
 
@@ -1202,6 +1260,54 @@ async login(data, deviceInfo = {}) {
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
     logger.info({ email, resetUrl }, "Password reset email queued");
     // TODO: Integrate email provider
+  }
+
+  // ─────────────────────────────────────────
+  // RECORD LEGAL CONSENT (TERMS & PRIVACY)
+  // ─────────────────────────────────────────
+  async recordConsent(userId, data = {}, deviceInfo = {}) {
+    const termsVersion = data.terms_version || CURRENT_TERMS_VERSION;
+    const privacyVersion = data.privacy_version || CURRENT_PRIVACY_VERSION;
+    const source = data.source || 'consent_prompt';
+
+    const consent = await this.repo.recordLegalConsent({
+      userId,
+      termsVersion,
+      privacyVersion,
+      ipAddress: deviceInfo.ipAddress,
+      userAgent: deviceInfo.userAgent,
+      source,
+    });
+
+    logger.info({ userId, termsVersion, privacyVersion, source }, 'Legal consent recorded successfully');
+
+    return {
+      success: true,
+      has_current_consent: true,
+      consent,
+    };
+  }
+
+  // ─────────────────────────────────────────
+  // GET LEGAL CONSENT STATUS
+  // ─────────────────────────────────────────
+  async getConsentStatus(userId) {
+    const hasCurrentConsent = await this.repo.hasValidConsent(
+      userId,
+      CURRENT_TERMS_VERSION,
+      CURRENT_PRIVACY_VERSION
+    );
+
+    const latestConsent = await this.repo.getLatestLegalConsent(userId);
+
+    return {
+      has_current_consent: hasCurrentConsent,
+      current_versions: {
+        terms: CURRENT_TERMS_VERSION,
+        privacy: CURRENT_PRIVACY_VERSION,
+      },
+      latest_consent: latestConsent,
+    };
   }
 }
 
