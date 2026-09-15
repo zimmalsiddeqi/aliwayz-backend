@@ -171,25 +171,40 @@ class NotificationService {
     if (payloadData.route) {
       targetRoute = payloadData.route;
     } else {
+      const convId = payloadData.conversation_id || payloadData.conversationId;
+      const prodId = payloadData.product_id || payloadData.productId;
+      const storeSlug = payloadData.seller_store_slug || payloadData.store_slug || payloadData.storeSlug || payloadData.follower_username;
+
       switch (type) {
         case 'new_message':
-          targetRoute = payloadData.conversation_id ? `/inbox/${payloadData.conversation_id}` : '/inbox';
+        case 'chat_message':
+        case 'buyer_message':
+          targetRoute = convId ? `/inbox/${convId}` : '/inbox';
           break;
         case 'product_sold':
-          targetRoute = payloadData.seller_store_slug ? `/store/${payloadData.seller_store_slug}` : '/notifications';
+        case 'order_completed':
+          targetRoute = storeSlug ? `/store/${storeSlug}` : '/notifications';
           break;
         case 'new_follower':
-          targetRoute = payloadData.follower_username ? `/store/${payloadData.follower_username}` : '/notifications';
+          targetRoute = storeSlug ? `/store/${storeSlug}` : '/notifications';
           break;
         case 'price_update':
         case 'review_received':
-          targetRoute = payloadData.product_id ? `/product/${payloadData.product_id}` : '/notifications';
+        case 'product_matched':
+        case 'wanted_match':
+          targetRoute = prodId ? `/product/${prodId}` : '/notifications';
           break;
         case 'qr_generated':
-          targetRoute = payloadData.conversation_id ? `/inbox/${payloadData.conversation_id}` : '/inbox';
+        case 'qr_scanned':
+        case 'sale_completed':
+          targetRoute = convId ? `/inbox/${convId}` : '/inbox';
           break;
         case 'badge_earned':
           targetRoute = '/profile';
+          break;
+        case 'verification_approved':
+        case 'verification_rejected':
+          targetRoute = '/verification';
           break;
         case 'report_resolved':
         case 'admin_message':
