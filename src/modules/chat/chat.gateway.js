@@ -281,11 +281,16 @@ class ChatGateway {
         content.trim()
       );
 
-      // Emit to conversation room (if both joined)
-      this.io.to(`conversation:${conversationId}`).emit('message_received', {
+      // Emit to conversation room across all common event names for frontend compatibility
+      const eventPayload = {
         message,
         conversationId,
-      });
+      };
+
+      this.io.to(`conversation:${conversationId}`).emit('message_received', eventPayload);
+      this.io.to(`conversation:${conversationId}`).emit('new_message', eventPayload);
+      this.io.to(`conversation:${conversationId}`).emit('receive_message', eventPayload);
+      this.io.to(`conversation:${conversationId}`).emit('message', eventPayload);
 
       // Get conversation details for correct recipient ID
       const conv = await this.chatService['repo'].findConversationById(conversationId);
@@ -295,10 +300,10 @@ class ChatGateway {
           : conv?.buyer_id;
 
       if (recipientId) {
-        this.io.to(`user:${recipientId}`).emit('message_received', {
-          message,
-          conversationId,
-        });
+        this.io.to(`user:${recipientId}`).emit('message_received', eventPayload);
+        this.io.to(`user:${recipientId}`).emit('new_message', eventPayload);
+        this.io.to(`user:${recipientId}`).emit('receive_message', eventPayload);
+        this.io.to(`user:${recipientId}`).emit('message', eventPayload);
 
         this.io.to(`user:${recipientId}`).emit('new_notification', {
           title: `New message from ${socket.user.username || 'user'}`,
@@ -321,7 +326,7 @@ class ChatGateway {
         'Message sent via socket'
       );
 
-      // Trigger automatic FCM push notification fallback for offline/background participants
+      // Trigger automatic FCM push notification for recipient
       this._sendFCMPushFallback(conversationId, message, socket.user, data.tempId).catch(
         (err) => logger.warn({ err, conversationId }, 'FCM push fallback failed')
       );
@@ -339,19 +344,7 @@ class ChatGateway {
   // ─────────────────────────────────────────
   async _sendFCMPushFallback(conversationId, message, senderUser, tempId = '') {
     try {
-      // 1. Get active room members from Redis safely
-      let activeMembers = [];
-      try {
-        if (this.redis?.client && typeof this.redis.client.smembers === 'function') {
-          activeMembers = await this.redis.client.smembers(`conv:members:${conversationId}`);
-        } else if (typeof this.redis?.smembers === 'function') {
-          activeMembers = await this.redis.smembers(`conv:members:${conversationId}`);
-        }
-      } catch (redisErr) {
-        // Safe in-memory fallback
-      }
-
-      // 2. Lookup conversation to find participants
+      // 1. Lookup conversation to find participants
       const conversation = await this.chatService['repo'].findConversationById(
         conversationId
       );
@@ -365,12 +358,7 @@ class ChatGateway {
 
       if (!recipientId) return;
 
-      // 3. If recipient is active in the room right now, skip FCM push
-      if (Array.isArray(activeMembers) && activeMembers.includes(recipientId)) {
-        return;
-      }
-
-      // 4. Send FCM push notification asynchronously
+      // 2. Always dispatch FCM push notification asynchronously (WhatsApp-style)
       await this.notificationService.createNotification({
         userId: recipientId,
         type: 'chat_message',
@@ -381,6 +369,7 @@ class ChatGateway {
             : message.content,
         data: {
           conversation_id: conversationId,
+          conversationId: conversationId,
           message_id: message.id,
           temp_id: tempId || '',
           sender_id: senderUser.id,
@@ -390,10 +379,10 @@ class ChatGateway {
 
       logger.info(
         { recipientId, conversationId, messageId: message.id },
-        'FCM chat push fallback dispatched'
+        'FCM chat push dispatched successfully'
       );
     } catch (err) {
-      logger.warn({ err, conversationId }, 'Failed to dispatch FCM chat fallback');
+      logger.warn({ err, conversationId }, 'Failed to dispatch FCM chat push');
     }
   }
 
