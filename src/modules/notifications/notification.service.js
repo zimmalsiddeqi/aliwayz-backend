@@ -211,29 +211,30 @@ class NotificationService {
       ),
     };
 
+    // DATA-ONLY message: ensures onMessageReceived() fires in ALL app states
+    // (foreground, background, killed) for WhatsApp-style notification control.
+    // Do NOT add a top-level 'notification' block — it causes Android OS to
+    // intercept and display its own notification in background/killed state,
+    // bypassing our custom sound, vibration, deep-link routing, and styling.
     const multicastMessage = {
       tokens,
-      notification: {
-        title,
-        body,
-      },
       data: stringData,
       android: {
         priority: 'high',
-        notification: {
-          channelId: 'aliwayz_default',
-          sound: 'default',
-          icon: 'ic_notification',
-          color: '#10B981',
-          defaultSound: true,
-          defaultVibrateTimings: true,
-        },
       },
       apns: {
+        headers: {
+          'apns-priority': '10',
+        },
         payload: {
           aps: {
+            'content-available': 1,
             sound: 'default',
             badge: 1,
+            alert: {
+              title: title || 'Aliwayz',
+              body: body || '',
+            },
           },
         },
       },

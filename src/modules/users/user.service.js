@@ -271,14 +271,6 @@ class UserService {
   }
 
   // ─────────────────────────────────────────
-  // UPDATE FCM TOKEN
-  // ─────────────────────────────────────────
-  async updateFcmToken(userId, fcmToken) {
-    await this.repo.updateProfile(userId, { fcm_token: fcmToken });
-    return { message: 'Push notification token updated' };
-  }
-
-  // ─────────────────────────────────────────
   // GET PURCHASE HISTORY
   // ─────────────────────────────────────────
   async getPurchaseHistory(userId, query) {
