@@ -35,6 +35,14 @@ async function productRoutes(fastify) {
     handler: ctrl.browseProducts.bind(ctrl),
   });
 
+  // ─────────────────────────────────────────
+  // My listings / products (auth required)
+  // ─────────────────────────────────────────
+  fastify.get('/my', {
+    preHandler: [authenticate],
+    handler: ctrl.getMyProducts.bind(ctrl),
+  });
+
   fastify.get('/:id', {
     preHandler: [optionalAuthenticate],
     handler: ctrl.getProduct.bind(ctrl),

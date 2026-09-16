@@ -686,6 +686,62 @@ class ProductRepository {
     }
     return data || [];
   }
+  // ─────────────────────────────────────────
+  // Find all products by user/seller
+  // ─────────────────────────────────────────
+  async findUserProducts(userId, { limit = 50, offset = 0, status = 'all' } = {}) {
+    let query = this.supabase
+      .from('products')
+      .select(
+        `
+        id,
+        title,
+        slug,
+        description,
+        price,
+        currency,
+        condition,
+        status,
+        category_id,
+        location_city,
+        location_lat,
+        location_lng,
+        view_count,
+        favorite_count,
+        created_at,
+        categories (
+          id,
+          name,
+          slug
+        ),
+        product_images (
+          id,
+          cdn_url,
+          storage_url,
+          thumbnail_cdn_url,
+          thumbnail_storage_url,
+          display_order,
+          is_primary
+        )
+      `,
+        { count: 'exact' }
+      )
+      .eq('seller_id', userId)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (status && status !== 'all') {
+      query = query.eq('status', status);
+    }
+
+    const { data, count, error } = await query;
+    if (error) {
+      logger.error({ error }, 'findUserProducts failed');
+      throw error;
+    }
+    return { data: data || [], count: count || 0 };
+  }
 }
 
 module.exports = ProductRepository;

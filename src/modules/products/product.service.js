@@ -707,6 +707,20 @@ class ProductService {
       });
     }
   }
+
+  // ─────────────────────────────────────────
+  // GET MY PRODUCTS (Seller/User's own products)
+  // ─────────────────────────────────────────
+  async getMyProducts(userId, query = {}) {
+    const { page, limit, offset } = getPaginationParams(query);
+    const status = query.status || 'all';
+    const { data, count } = await this.repo.findUserProducts(userId, {
+      limit,
+      offset,
+      status,
+    });
+    return { data, pagination: { page, limit, total: count } };
+  }
 }
 
 module.exports = ProductService;

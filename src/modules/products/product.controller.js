@@ -66,6 +66,17 @@ class ProductController {
   }
 
   // ─────────────────────────────────────────
+  // GET /products/my
+  // ─────────────────────────────────────────
+  async getMyProducts(request, reply) {
+    const result = await this.productService.getMyProducts(
+      request.user.id,
+      request.query
+    );
+    return reply.send(paginatedResponse(result.data, result.pagination));
+  }
+
+  // ─────────────────────────────────────────
   // GET /products
   // ─────────────────────────────────────────
   async browseProducts(request, reply) {
