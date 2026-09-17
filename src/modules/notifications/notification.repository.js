@@ -26,7 +26,133 @@ class NotificationRepository {
   }
 
   // ─────────────────────────────────────────
-  // Get user notifications (paginated)
+  // Update notification record
+  // ─────────────────────────────────────────
+  async updateNotification(notificationId, updateData) {
+    const { data, error } = await this.supabase
+      .from('notifications')
+      .update(updateData)
+      .eq('id', notificationId)
+      .select('id, type, title, body, data, is_read, created_at')
+      .single();
+
+    if (error) {
+      logger.error({ error, notificationId }, 'updateNotification failed');
+      throw error;
+    }
+
+    return data;
+  }
+
+  // ─────────────────────────────────────────
+  // Find existing message notification for a conversation/sender
+  // ─────────────────────────────────────────
+  async findExistingMessageNotification(userId, { conversationId, senderId } = {}) {
+    try {
+      const { data, error } = await this.supabase
+        .from('notifications')
+        .select('id, type, title, body, data, is_read, created_at')
+        .eq('user_id', userId)
+        .in('type', ['new_message', 'chat_message'])
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error || !Array.isArray(data)) return null;
+
+      const match = data.find((n) => {
+        const d = n.data || {};
+        if (conversationId && (d.conversationId === conversationId || d.conversation_id === conversationId)) {
+          return true;
+        }
+        if (senderId && (d.senderId === senderId || d.sender_id === senderId)) {
+          return true;
+        }
+        return false;
+      });
+
+      return match || null;
+    } catch (err) {
+      logger.warn({ err, userId }, 'findExistingMessageNotification error');
+      return null;
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // Cleanup duplicate message notifications for conversation
+  // ─────────────────────────────────────────
+  async cleanupDuplicateMessageNotifications(userId, conversationId, keepNotificationId) {
+    try {
+      const { data, error } = await this.supabase
+        .from('notifications')
+        .select('id, data')
+        .eq('user_id', userId)
+        .in('type', ['new_message', 'chat_message'])
+        .neq('id', keepNotificationId);
+
+      if (!error && Array.isArray(data)) {
+        const idsToDelete = data
+          .filter((n) => {
+            const d = n.data || {};
+            return (
+              conversationId &&
+              (d.conversationId === conversationId || d.conversation_id === conversationId)
+            );
+          })
+          .map((n) => n.id);
+
+        if (idsToDelete.length > 0) {
+          await this.supabase
+            .from('notifications')
+            .delete()
+            .in('id', idsToDelete);
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, userId, conversationId }, 'cleanupDuplicateMessageNotifications failed');
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // Mark all message notifications for a conversation as read
+  // ─────────────────────────────────────────
+  async markConversationNotificationsRead(userId, conversationId) {
+    try {
+      const { data, error } = await this.supabase
+        .from('notifications')
+        .select('id, data')
+        .eq('user_id', userId)
+        .eq('is_read', false)
+        .in('type', ['new_message', 'chat_message']);
+
+      if (!error && Array.isArray(data)) {
+        const targetIds = data
+          .filter((n) => {
+            const d = n.data || {};
+            return (
+              d.conversationId === conversationId ||
+              d.conversation_id === conversationId
+            );
+          })
+          .map((n) => n.id);
+
+        if (targetIds.length > 0) {
+          await this.supabase
+            .from('notifications')
+            .update({
+              is_read: true,
+              read_at: new Date().toISOString(),
+            })
+            .in('id', targetIds)
+            .select('id');
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, userId, conversationId }, 'markConversationNotificationsRead failed');
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // Get user notifications (paginated + deduplicated per conversation)
   // ─────────────────────────────────────────
   async getUserNotifications(userId, { limit, offset }) {
     const { data, error, count } = await this.supabase
@@ -44,7 +170,40 @@ class NotificationRepository {
       throw error;
     }
 
-    return { data: data || [], count: count || 0 };
+    // Deduplicate message notifications per conversation so user only ever sees one notification per conversation
+    const seenConversations = new Set();
+    const deduplicatedData = [];
+    const duplicateIdsToDelete = [];
+
+    for (const notif of (data || [])) {
+      if (notif.type === 'new_message' || notif.type === 'chat_message') {
+        const convId =
+          notif.data?.conversationId ||
+          notif.data?.conversation_id ||
+          notif.data?.senderId ||
+          notif.data?.sender_id;
+        if (convId) {
+          if (seenConversations.has(convId)) {
+            duplicateIdsToDelete.push(notif.id);
+            continue; // Skip older duplicate
+          }
+          seenConversations.add(convId);
+        }
+      }
+      deduplicatedData.push(notif);
+    }
+
+    // Asynchronous cleanup of duplicate rows
+    if (duplicateIdsToDelete.length > 0) {
+      this.supabase
+        .from('notifications')
+        .delete()
+        .in('id', duplicateIdsToDelete)
+        .then(() => {})
+        .catch(() => {});
+    }
+
+    return { data: deduplicatedData, count: count || deduplicatedData.length };
   }
 
   // ─────────────────────────────────────────

@@ -41,7 +41,49 @@ class NotificationService {
     const targetUserId = userId || user_id;
     const payloadData = data && typeof data === 'object' ? data : {};
 
-    // 1. Store in-app notification
+    // 1. Message notification deduplication / consolidation
+    if (type === 'new_message' || type === 'chat_message') {
+      const convId = payloadData.conversationId || payloadData.conversation_id;
+      const senderId = payloadData.senderId || payloadData.sender_id;
+
+      try {
+        const existing = await this.repo.findExistingMessageNotification(targetUserId, {
+          conversationId: convId,
+          senderId,
+        });
+
+        if (existing && existing.id) {
+          // Update the existing notification to the latest message, reset is_read to false, and bump created_at
+          const updated = await this.repo.updateNotification(existing.id, {
+            title,
+            body,
+            data: payloadData,
+            is_read: false,
+            read_at: null,
+            created_at: new Date().toISOString(),
+          });
+
+          // Asynchronously clean up any other duplicate rows for this conversation
+          if (convId) {
+            this.repo
+              .cleanupDuplicateMessageNotifications(targetUserId, convId, existing.id)
+              .catch(() => {});
+          }
+
+          // Send FCM push notification (async — don't block)
+          this._sendFCMPush(existing.id, targetUserId, title, body, payloadData, type)
+            .catch((err) =>
+              logger.warn({ err, userId: targetUserId, type }, 'FCM push failed — non-critical')
+            );
+
+          return updated;
+        }
+      } catch (findErr) {
+        logger.warn({ findErr, targetUserId }, 'findExistingMessageNotification non-fatal');
+      }
+    }
+
+    // 2. Store new in-app notification
     const notification = await this.repo.createNotification({
       user_id: targetUserId,
       type,
@@ -56,7 +98,15 @@ class NotificationService {
       return notification || null;
     }
 
-    // 2. Send FCM push notification (async — don't block)
+    // Asynchronously clean up any older duplicates if conversationId is known
+    const convId = payloadData.conversationId || payloadData.conversation_id;
+    if ((type === 'new_message' || type === 'chat_message') && convId) {
+      this.repo
+        .cleanupDuplicateMessageNotifications(targetUserId, convId, notification.id)
+        .catch(() => {});
+    }
+
+    // 3. Send FCM push notification (async — don't block)
     this._sendFCMPush(notification.id, targetUserId, title, body, payloadData, type)
       .catch((err) =>
         logger.warn({ err, userId: targetUserId, type }, 'FCM push failed — non-critical')

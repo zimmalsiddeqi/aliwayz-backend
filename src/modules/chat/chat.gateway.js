@@ -175,6 +175,10 @@ class ChatGateway {
           conversationId,
           socket.user.id
         );
+        await this.notificationService['repo'].markConversationNotificationsRead(
+          socket.user.id,
+          conversationId
+        );
       } catch (readErr) {
         // Safe fallback
       }
@@ -325,64 +329,12 @@ class ChatGateway {
         { userId: socket.user.id, conversationId, messageId: message.id },
         'Message sent via socket'
       );
-
-      // Trigger automatic FCM push notification for recipient
-      this._sendFCMPushFallback(conversationId, message, socket.user, data.tempId).catch(
-        (err) => logger.warn({ err, conversationId }, 'FCM push fallback failed')
-      );
     } catch (err) {
       logger.error({ err }, 'handleSendMessage failed');
       socket.emit('message_error', {
         tempId: data?.tempId,
         error:  err.message || 'Failed to send message',
       });
-    }
-  }
-
-  // ─────────────────────────────────────────
-  // PRIVATE: FCM Push Notification Fallback for Chat
-  // ─────────────────────────────────────────
-  async _sendFCMPushFallback(conversationId, message, senderUser, tempId = '') {
-    try {
-      // 1. Lookup conversation to find participants
-      const conversation = await this.chatService['repo'].findConversationById(
-        conversationId
-      );
-
-      if (!conversation) return;
-
-      const recipientId =
-        conversation.buyer_id === senderUser.id
-          ? conversation.seller_id
-          : conversation.buyer_id;
-
-      if (!recipientId) return;
-
-      // 2. Always dispatch FCM push notification asynchronously (WhatsApp-style)
-      await this.notificationService.createNotification({
-        userId: recipientId,
-        type: 'chat_message',
-        title: senderUser.username || 'New message',
-        body:
-          message.content.length > 100
-            ? message.content.substring(0, 97) + '...'
-            : message.content,
-        data: {
-          conversation_id: conversationId,
-          conversationId: conversationId,
-          message_id: message.id,
-          temp_id: tempId || '',
-          sender_id: senderUser.id,
-          sender_username: senderUser.username || '',
-        },
-      });
-
-      logger.info(
-        { recipientId, conversationId, messageId: message.id },
-        'FCM chat push dispatched successfully'
-      );
-    } catch (err) {
-      logger.warn({ err, conversationId }, 'Failed to dispatch FCM chat push');
     }
   }
 
@@ -448,6 +400,11 @@ class ChatGateway {
       await this.chatService['repo'].markMessagesRead(
         conversationId,
         socket.user.id
+      );
+
+      await this.notificationService['repo'].markConversationNotificationsRead(
+        socket.user.id,
+        conversationId
       );
 
       this.io.to(`conversation:${conversationId}`).emit('messages_read', {

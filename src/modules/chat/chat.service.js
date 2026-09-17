@@ -176,9 +176,10 @@ if (initial_message && initial_message.trim()) {
       offset,
     });
 
-    // Mark messages as read (async — don't block response)
+    // Mark messages as read and clear in-app message notifications (async — don't block response)
     this.repo
       .markMessagesRead(conversationId, userId)
+      .then(() => this.notificationService.repo.markConversationNotificationsRead(userId, conversationId))
       .catch((err) => logger.warn({ err }, 'markMessagesRead failed'));
 
     return { data, pagination: { page, limit, total: count } };
