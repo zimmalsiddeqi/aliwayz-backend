@@ -32,6 +32,16 @@ class ChatRepository {
           price,
           currency,
           status,
+          stores (
+            id,
+            store_name,
+            slug,
+            logo_url,
+            is_verified,
+            average_rating,
+            total_reviews,
+            location_city
+          ),
           product_images (
             cdn_url,
             is_primary
@@ -45,7 +55,17 @@ class ChatRepository {
         seller:seller_id (
           id,
           username,
-          avatar_url
+          avatar_url,
+          stores (
+            id,
+            store_name,
+            slug,
+            logo_url,
+            is_verified,
+            average_rating,
+            total_reviews,
+            location_city
+          )
         )
       `)
       .eq('product_id', productId)
@@ -84,6 +104,16 @@ class ChatRepository {
           price,
           currency,
           status,
+          stores (
+            id,
+            store_name,
+            slug,
+            logo_url,
+            is_verified,
+            average_rating,
+            total_reviews,
+            location_city
+          ),
           product_images (
             cdn_url,
             is_primary
@@ -97,7 +127,17 @@ class ChatRepository {
         seller:seller_id (
           id,
           username,
-          avatar_url
+          avatar_url,
+          stores (
+            id,
+            store_name,
+            slug,
+            logo_url,
+            is_verified,
+            average_rating,
+            total_reviews,
+            location_city
+          )
         ),
         qr_transactions (
           id,
@@ -134,6 +174,16 @@ class ChatRepository {
           title,
           slug,
           price,
+          stores (
+            id,
+            store_name,
+            slug,
+            logo_url,
+            is_verified,
+            average_rating,
+            total_reviews,
+            location_city
+          ),
           product_images (
             cdn_url,
             is_primary
@@ -142,7 +192,17 @@ class ChatRepository {
         seller:seller_id (
           id,
           username,
-          avatar_url
+          avatar_url,
+          stores (
+            id,
+            store_name,
+            slug,
+            logo_url,
+            is_verified,
+            average_rating,
+            total_reviews,
+            location_city
+          )
         )
       `)
       .single();
@@ -177,6 +237,16 @@ class ChatRepository {
           price,
           currency,
           status,
+          stores (
+            id,
+            store_name,
+            slug,
+            logo_url,
+            is_verified,
+            average_rating,
+            total_reviews,
+            location_city
+          ),
           product_images (
             cdn_url,
             is_primary
@@ -190,7 +260,17 @@ class ChatRepository {
         seller:seller_id (
           id,
           username,
-          avatar_url
+          avatar_url,
+          stores (
+            id,
+            store_name,
+            slug,
+            logo_url,
+            is_verified,
+            average_rating,
+            total_reviews,
+            location_city
+          )
         )
       `,
         { count: 'exact' }
