@@ -148,15 +148,15 @@ class QRService {
 
     // Generate QR code image (base64 data URL)
     const qrCodeDataURL = await QRCode.toDataURL(token, {
-      errorCorrectionLevel: 'H',
+      errorCorrectionLevel: 'M',
       type:                 'image/png',
-      quality:              0.95,
-      margin:               2,
+      quality:              0.98,
+      margin:               3,
       color: {
         dark:  '#000000',
         light: '#FFFFFF',
       },
-      width: 400,
+      width: 480,
     });
 
     // ── Send push notification to buyer ─────────────────────

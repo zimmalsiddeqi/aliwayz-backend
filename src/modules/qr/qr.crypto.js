@@ -68,9 +68,28 @@ class QRCrypto {
   // ─────────────────────────────────────────
   decrypt(token) {
     try {
-      const combined = Buffer.from(token, 'base64url');
+      if (!token || typeof token !== 'string') return null;
+      let cleanToken = token.trim().replace(/^["']|["']$/g, '');
+      if (cleanToken.includes('%')) {
+        try {
+          cleanToken = decodeURIComponent(cleanToken);
+        } catch {}
+      }
 
-      if (combined.length < IV_LENGTH + AUTH_TAG_LENGTH + 1) {
+      let combined;
+      try {
+        combined = Buffer.from(cleanToken, 'base64url');
+      } catch {
+        combined = null;
+      }
+
+      if (!combined || combined.length < IV_LENGTH + AUTH_TAG_LENGTH + 1) {
+        try {
+          combined = Buffer.from(cleanToken.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+        } catch {}
+      }
+
+      if (!combined || combined.length < IV_LENGTH + AUTH_TAG_LENGTH + 1) {
         return null; // Token too short — invalid
       }
 
@@ -102,9 +121,23 @@ class QRCrypto {
   // Used as Redis key and DB storage (never store raw token)
   // ─────────────────────────────────────────
   hash(token) {
+    let clean = typeof token === 'string' ? token.trim().replace(/^["']|["']$/g, '') : '';
+    if (clean.includes('%')) {
+      try {
+        clean = decodeURIComponent(clean);
+      } catch {}
+    }
+    // Normalize to base64url if possible for consistent hashing
+    try {
+      const buf = Buffer.from(clean, 'base64url');
+      if (buf.length > 0) {
+        clean = buf.toString('base64url');
+      }
+    } catch {}
+
     return crypto
       .createHash('sha256')
-      .update(token)
+      .update(clean)
       .digest('hex');
   }
 
