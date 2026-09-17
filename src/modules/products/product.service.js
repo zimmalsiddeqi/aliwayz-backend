@@ -92,12 +92,28 @@ class ProductService {
     let product = await this.redis.get(cacheKey);
 
     if (!product) {
-      product = await this.repo.findProductById(productId);
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(productId);
+
+      if (isUUID) {
+        product = await this.repo.findProductById(productId);
+      } else {
+        product = await this.repo.findProductBySlug(productId);
+        if (!product) {
+          product = await this.repo.findProductById(productId);
+        }
+      }
+
       if (!product) throw new NotFoundError('Product');
 
-      // Only cache available products
+      // Only cache available products (cache under both slug and UUID for instant resolution)
       if (product.status === PRODUCT_STATUS.AVAILABLE) {
         await this.redis.set(cacheKey, product, CACHE_TTL.PRODUCT);
+        if (product.id && product.id !== productId) {
+          await this.redis.set(CACHE_KEYS.PRODUCT(product.id), product, CACHE_TTL.PRODUCT);
+        }
+        if (product.slug && product.slug !== productId) {
+          await this.redis.set(CACHE_KEYS.PRODUCT(product.slug), product, CACHE_TTL.PRODUCT);
+        }
       }
     }
 
