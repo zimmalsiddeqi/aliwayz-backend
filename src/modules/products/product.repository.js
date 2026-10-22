@@ -63,11 +63,14 @@ class ProductRepository {
         slug,
         logo_url,
         is_verified,
-        average_rating
+        average_rating,
+        description,
+        location_city
       ),
       users:seller_id (
         id,
         username,
+        full_name,
         avatar_url,
         location_city
       )

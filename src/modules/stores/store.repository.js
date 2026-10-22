@@ -223,17 +223,31 @@ class StoreRepository {
       Date.now() - 30 * 24 * 60 * 60 * 1000
     ).toISOString();
 
+    // Keep seller_stats refreshed in background
+    try {
+      await this.supabase.rpc('refresh_seller_listing_stats', { p_seller_id: userId });
+    } catch (_err) {}
+
     const [
       { data: stats },
+      { data: liveProducts },
       { count: viewsLast30 },
       { count: favoritesLast30 },
       { data: recentSales },
+      { data: storeData },
     ] = await Promise.all([
       this.supabase
         .from('seller_stats')
         .select('*')
         .eq('user_id', userId)
         .single(),
+
+      // Live seller/store products (never show other sellers' data)
+      this.supabase
+        .from('products')
+        .select('id, status, view_count, favorite_count')
+        .or(`seller_id.eq.${userId},store_id.eq.${storeId}`)
+        .eq('is_deleted', false),
 
       this.supabase
         .from('product_views')
@@ -254,10 +268,44 @@ class StoreRepository {
         .eq('status', 'scanned')
         .order('created_at', { ascending: false })
         .limit(10),
+
+      this.supabase
+        .from('stores')
+        .select('average_rating, total_reviews, total_followers')
+        .eq('id', storeId)
+        .single(),
     ]);
 
+    const productsList = liveProducts || [];
+    const activeCount = productsList.filter(
+      (p) => p.status === 'available' || p.status === 'active'
+    ).length;
+    const totalCount = productsList.length;
+    const totalViews = productsList.reduce(
+      (sum, p) => sum + (Number(p.view_count) || 0),
+      0
+    );
+    const totalFavs = productsList.reduce(
+      (sum, p) => sum + (Number(p.favorite_count) || 0),
+      0
+    );
+
+    const mergedOverview = {
+      ...(stats || {}),
+      total_listings: totalCount,
+      active_listings: activeCount,
+      total_views: totalViews,
+      total_favorites: totalFavs,
+      average_rating:
+        storeData?.average_rating ?? stats?.average_rating ?? 0,
+      total_reviews:
+        storeData?.total_reviews ?? stats?.total_reviews ?? 0,
+      total_followers:
+        storeData?.total_followers ?? stats?.total_followers ?? 0,
+    };
+
     return {
-      overview: stats,
+      overview: mergedOverview,
       last_30_days: {
         views: viewsLast30 || 0,
         favorites: favoritesLast30 || 0,

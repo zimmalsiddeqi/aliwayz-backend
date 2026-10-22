@@ -36,6 +36,24 @@ class UserService {
     const profile = await this.repo.getMyProfile(userId);
     if (!profile) throw new NotFoundError('User');
 
+    // Auto-heal role to 'both' if user has a store while role is still 'buyer'
+    if (profile.role === 'buyer') {
+      try {
+        const { data: userStore } = await this.supabase
+          .from('stores')
+          .select('id')
+          .eq('user_id', profile.id)
+          .eq('is_deleted', false)
+          .maybeSingle();
+        if (userStore) {
+          await this.repo.updateProfile(profile.id, { role: 'both' });
+          profile.role = 'both';
+        }
+      } catch (_e) {
+        // Non-fatal
+      }
+    }
+
     // Filter only active badges for response
     if (profile.user_badges) {
       profile.user_badges = profile.user_badges.filter((ub) => ub.is_active);
@@ -67,6 +85,24 @@ class UserService {
 
     const profile = await this.repo.getPublicProfile(username);
     if (!profile) throw new NotFoundError('User');
+
+    // Auto-heal role to 'both' if user has a store while role is still 'buyer'
+    if (profile.role === 'buyer') {
+      try {
+        const { data: userStore } = await this.supabase
+          .from('stores')
+          .select('id')
+          .eq('user_id', profile.id)
+          .eq('is_deleted', false)
+          .maybeSingle();
+        if (userStore) {
+          await this.repo.updateProfile(profile.id, { role: 'both' });
+          profile.role = 'both';
+        }
+      } catch (_e) {
+        // Non-fatal
+      }
+    }
 
     // Filter active badges only
     if (profile.user_badges) {

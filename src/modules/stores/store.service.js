@@ -40,6 +40,16 @@ class StoreService {
   async createStore(userId, userRole, data) {
     // Validate user has seller capabilities
     if (!SELLER_ROLES.includes(userRole)) {
+      try {
+        await this.supabase
+          .from("users")
+          .update({ role: "both", updated_at: new Date().toISOString() })
+          .eq("id", userId);
+      } catch (roleErr) {
+        logger.warn({ roleErr, userId }, "Auto-upgrade buyer role to both failed");
+      }
+    }
+    if (false && !SELLER_ROLES.includes(userRole)) {
       throw new ForbiddenError(
         "You need a seller account to create a store. Update your role first.",
       );
@@ -58,6 +68,21 @@ class StoreService {
     // Enforce one store per user
     const existingStore = await this.repo.findStoreByUserId(userId);
     if (existingStore) {
+      const updatedExisting = await this.repo.updateStore(existingStore.id, {
+        store_name: data.store_name || existingStore.store_name,
+        description: data.description !== undefined ? data.description : existingStore.description,
+        category_id: data.category_id || existingStore.category_id,
+        location_city: data.location_city !== undefined ? data.location_city : existingStore.location_city,
+        location_lat: data.location_lat !== undefined ? data.location_lat : existingStore.location_lat,
+        location_lng: data.location_lng !== undefined ? data.location_lng : existingStore.location_lng,
+        social_instagram: data.social_instagram !== undefined ? data.social_instagram : existingStore.social_instagram,
+        social_facebook: data.social_facebook !== undefined ? data.social_facebook : existingStore.social_facebook,
+        social_tiktok: data.social_tiktok !== undefined ? data.social_tiktok : existingStore.social_tiktok,
+      });
+      await this.redis.del(CACHE_KEYS.STORE(existingStore.slug));
+      return updatedExisting;
+    }
+    if (false && existingStore) {
       throw new AppError(
         "You already have a store. You can only have one store per account.",
         409,
@@ -98,6 +123,24 @@ class StoreService {
 
     const store = await this.repo.findStoreBySlug(slug);
     if (!store) throw new NotFoundError("Store");
+
+    // Strip private street address from [Seller_Meta] when address visibility is not exact
+    if (store.description && store.description.includes("[Seller_Meta]:")) {
+      store.description = store.description.replace(
+        /\[Seller_Meta\]:(\{[^\n]*\})/i,
+        (full, jsonStr) => {
+          try {
+            const parsed = JSON.parse(jsonStr);
+            if (!parsed.hs || parsed.av !== "exact") {
+              delete parsed.sa;
+            }
+            return `[Seller_Meta]:${JSON.stringify(parsed)}`;
+          } catch (_e) {
+            return full;
+          }
+        },
+      );
+    }
 
     await this.redis.set(cacheKey, store, CACHE_TTL.STORE);
 
