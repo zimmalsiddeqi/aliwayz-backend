@@ -13,7 +13,7 @@ async function storeRoutes(fastify) {
   // MUST be BEFORE /:slug route to avoid conflict
   // ─────────────────────────────────────────
   fastify.get('/my', {
-    preHandler: [authenticate, requireSeller],
+    preHandler: [authenticate],
     handler: ctrl.getMyStore.bind(ctrl),
   });
 
@@ -39,7 +39,7 @@ async function storeRoutes(fastify) {
   // Protected — seller required
   // ─────────────────────────────────────────
   fastify.post('/', {
-    preHandler: [authenticate, requireSeller, sanitizeInput],
+    preHandler: [authenticate, sanitizeInput],
     handler: ctrl.createStore.bind(ctrl),
   });
 
