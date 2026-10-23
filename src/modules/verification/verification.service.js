@@ -5,6 +5,7 @@ const ManualVerificationProvider = require('./verificationProvider.manual');
 const NotificationService = require('../notifications/notification.service');
 const AppError = require('../../shared/errors/AppError');
 const logger = require('../../shared/utils/logger');
+const { CACHE_KEYS } = require('../../shared/constants/cacheKeys');
 const { decrypt } = require('./verification.utils');
 
 const VERIFICATION_TEMPLATES = {
@@ -128,10 +129,37 @@ class VerificationService {
     }
 
     const txResult = Array.isArray(data) ? data[0] : data;
+    const userId = txResult?.user_id || submission.user_id;
+
+    // Synchronize is_verified status on any existing stores owned by this seller
+    if (userId) {
+      try {
+        const isApproved = status === 'approved';
+        const { data: updatedStores, error: storeSyncErr } = await this.supabase
+          .from('stores')
+          .update({
+            is_verified: isApproved,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId)
+          .select('id, slug, is_verified');
+
+        if (storeSyncErr) {
+          logger.error({ storeSyncErr, userId }, 'Failed to sync store is_verified status');
+        } else if (updatedStores && updatedStores.length > 0) {
+          for (const s of updatedStores) {
+            if (s.slug && this.redis) {
+              await this.redis.del(CACHE_KEYS.STORE(s.slug));
+            }
+          }
+        }
+      } catch (storeErr) {
+        logger.warn({ storeErr, userId }, 'Error updating store verification status');
+      }
+    }
 
     // Post-Commit Notifications
     try {
-      const userId = txResult?.user_id;
       if (userId) {
         if (status === 'approved') {
           const template = VERIFICATION_TEMPLATES.APPROVED;

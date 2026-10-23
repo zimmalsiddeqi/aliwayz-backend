@@ -61,7 +61,8 @@ class StoreRepository {
           id,
           username,
           avatar_url,
-          member_since:created_at
+          member_since:created_at,
+          seller_verification_status
         ),
         user_badges:users!user_id (
           user_badges (

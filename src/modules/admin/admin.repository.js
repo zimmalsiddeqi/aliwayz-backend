@@ -203,10 +203,20 @@ class AdminRepository {
         updated_at: new Date().toISOString(),
       })
       .eq('id', storeId)
-      .select('id, store_name, is_verified')
+      .select('id, store_name, slug, is_verified, user_id')
       .single();
 
     if (error) throw error;
+
+    if (data && data.user_id) {
+      await this.supabase
+        .from('users')
+        .update({
+          seller_verification_status: isVerified ? 'identity_verified' : 'none',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', data.user_id);
+    }
 
     await this._logAdminAction(
       adminId,
