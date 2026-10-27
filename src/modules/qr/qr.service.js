@@ -172,6 +172,56 @@ class QRService {
       },
     });
 
+    // ── Send QR code verification message to chat thread ─────
+    try {
+      const qrPayload = JSON.stringify({
+        type:         'qr_verification',
+        token,
+        expiresAt,
+        productTitle: product.title,
+        productPrice: product.price,
+        currency:     product.currency,
+        productId:    product_id,
+        transactionId: qrTransaction.id,
+      });
+
+      const { data: createdMsg } = await this.supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversation.id,
+          sender_id:       sellerId,
+          content:         qrPayload,
+          content_type:    'qr_code',
+          is_read:         false,
+        })
+        .select(`
+          id,
+          conversation_id,
+          sender_id,
+          content,
+          content_type,
+          is_read,
+          created_at,
+          sender:sender_id (
+            id,
+            username,
+            avatar_url
+          )
+        `)
+        .single();
+
+      if (createdMsg && this.fastify && this.fastify.chatGateway) {
+        this.fastify.chatGateway.io
+          .to(`conversation:${conversation.id}`)
+          .emit('message_received', {
+            conversationId: conversation.id,
+            message: createdMsg,
+          });
+      }
+    } catch (msgErr) {
+      logger.warn({ err: msgErr.message }, 'Could not persist QR message in conversation');
+    }
+
     // ── ✅ Emit real-time socket event to buyer ──────────────
     // Instantly notifies buyer inside the chat room
     if (this.fastify && this.fastify.chatGateway) {
@@ -549,6 +599,15 @@ class QRService {
     const activeQR = await this.repo.findActiveQRForProduct(productId);
 
     if (!activeQR) {
+      const latestQR = await this.repo.findLatestQRForProduct(productId);
+      if (latestQR && (latestQR.status === 'scanned' || latestQR.status === 'completed')) {
+        return {
+          has_active_qr:  false,
+          transaction_id: latestQR.id,
+          status:         latestQR.status,
+          is_used:        true,
+        };
+      }
       return { has_active_qr: false };
     }
 

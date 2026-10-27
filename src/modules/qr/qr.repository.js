@@ -49,10 +49,30 @@ class QRRepository {
       .gt('expires_at', new Date().toISOString())
       .order('generated_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (error && error.code !== 'PGRST116') {
       logger.error({ error }, 'findActiveQRForProduct failed');
+      throw error;
+    }
+
+    return data || null;
+  }
+
+  // ─────────────────────────────────────────
+  // Find latest QR transaction for a product
+  // ─────────────────────────────────────────
+  async findLatestQRForProduct(productId) {
+    const { data, error } = await this.supabase
+      .from('qr_transactions')
+      .select('id, product_id, seller_id, buyer_id, token_hash, status, expires_at, generated_at')
+      .eq('product_id', productId)
+      .order('generated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      logger.error({ error }, 'findLatestQRForProduct failed');
       throw error;
     }
 
