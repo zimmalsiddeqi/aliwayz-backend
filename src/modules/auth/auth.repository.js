@@ -72,6 +72,9 @@ class AuthRepository {
   // Find user by Supabase UID
   // ─────────────────────────────────────────
   async findUserBySupabaseUid(supabaseUid) {
+    if (!supabaseUid || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(supabaseUid)) {
+      return null;
+    }
     const { data, error } = await this.supabase
       .from('users')
       .select(

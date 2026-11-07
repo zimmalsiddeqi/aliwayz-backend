@@ -23,8 +23,9 @@ class CategoryController {
   _validate(schema, data) {
     const result = schema.safeParse(data);
     if (!result.success) {
-      const errors = result.error.errors.map((e) => ({
-        field: e.path.join('.'),
+      const issues = result.error?.issues || result.error?.errors || [];
+      const errors = issues.map((e) => ({
+        field: e.path ? e.path.join('.') : 'unknown',
         message: e.message,
       }));
       throw new ValidationError('Validation failed', errors);

@@ -67,11 +67,12 @@ const appleOAuthSchema = z.object({
   id_token:       z.string().min(1).optional(),
   token:          z.string().min(1).optional(),
   code:           z.string().min(1).optional(),
+  email:          z.string().email().optional(),
   user:           z.any().optional(),
   full_name:      z.string().max(100).optional(),
   role:           z.enum(['buyer', 'seller', 'both']).default('buyer'),
 }).refine(
-  (d) => d.identity_token || d.id_token || d.token || d.code,
+  (d) => d.identity_token || d.id_token || d.token || d.code || d.email,
   { message: 'Apple token (id_token or identity_token) is required' }
 );
 

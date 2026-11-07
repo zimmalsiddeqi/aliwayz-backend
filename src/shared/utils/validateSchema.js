@@ -9,15 +9,14 @@ const validateSchema = (schema, data) => {
     const errors = [];
 
     try {
-      if (result.error?.errors) {
-        result.error.errors.forEach((e) => {
-          errors.push({
-            field: e.path?.join('.') || 'unknown',
-            message: e.message,
-            received: e.received,
-          });
+      const issues = result.error?.issues || result.error?.errors || [];
+      issues.forEach((e) => {
+        errors.push({
+          field: e.path?.join('.') || 'unknown',
+          message: e.message,
+          received: e.received,
         });
-      }
+      });
     } catch {
       errors.push({ field: 'unknown', message: 'Validation failed' });
     }

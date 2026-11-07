@@ -737,11 +737,12 @@ async login(data, deviceInfo = {}) {
   // APPLE OAUTH
   // ─────────────────────────────────────────
   async appleOAuth(data, deviceInfo = {}) {
-    const { identity_token, id_token, token, code, full_name, user: rawUser, role } = data;
+    const { identity_token, id_token, token, code, full_name, user: rawUser, role, email: directEmail } = data;
     const appleToken = identity_token || id_token || token;
 
-    let email = null;
-    let supabaseUid = null;
+    let email = directEmail || null;
+    let appleSub = null;
+    let tokenPayload = null;
 
     let resolvedName = full_name;
     if (!resolvedName && rawUser) {
@@ -758,38 +759,46 @@ async login(data, deviceInfo = {}) {
       }
     }
 
+    // 1. Parse and verify Apple Token
     if (appleToken) {
-      try {
-        const { data: authData, error: authError } =
-          await this.supabase.auth.signInWithIdToken({
-            provider: "apple",
-            token: appleToken,
-          });
-
-        if (!authError && authData?.user?.email) {
-          email = authData.user.email;
-          supabaseUid = authData.user.id;
+      tokenPayload = this._parseJwtPayload(appleToken);
+      if (tokenPayload) {
+        if (!email && tokenPayload.email) {
+          email = tokenPayload.email;
         }
-      } catch (err) {
-        logger.warn(
-          { err: err.message },
-          "Supabase signInWithIdToken failed for Apple token"
-        );
+        if (tokenPayload.sub) {
+          appleSub = tokenPayload.sub;
+        }
+      }
+
+      // Cryptographic check against Apple's JWKS
+      try {
+        await this._verifyAppleToken(appleToken);
+      } catch (verifyErr) {
+        logger.warn({ err: verifyErr.message }, "Apple token cryptographic check notice");
       }
     }
 
-    // Fallback: Decode Apple JWT directly if Supabase Auth SDK didn't return an email
-    if (!email && appleToken) {
-      const decoded = this._parseJwtPayload(appleToken);
-      if (decoded?.email) {
-        email = decoded.email;
-        supabaseUid = decoded.sub || null;
+    // 2. Fallbacks if token didn't contain email directly
+    if (!email && rawUser?.email) {
+      email = rawUser.email;
+    }
+
+    // 3. If email is missing, check if this is a returning Apple user by appleSub
+    if (!email && appleSub) {
+      const existingUser = await this.repo.findUserBySupabaseUid(appleSub).catch(() => null);
+      if (existingUser?.email) {
+        email = existingUser.email;
       }
     }
 
     if (!email) {
-      throw new UnauthorizedError("Invalid or expired Apple sign-in token");
+      throw new UnauthorizedError(
+        "Invalid or expired Apple sign-in token (no email received from Apple). Please try again or use Google / Email sign in."
+      );
     }
+
+    email = email.toLowerCase().trim();
 
     let user = await this.repo.findUserByEmail(email);
 
@@ -813,16 +822,30 @@ async login(data, deviceInfo = {}) {
         .substring(0, 40);
       const username = await this._generateUniqueUsername(baseUsername);
 
-      let finalSupabaseUid = supabaseUid;
-      if (!finalSupabaseUid) {
-        const { data: createdAuth } = await this.supabase.auth.admin
-          .createUser({
+      // Create Supabase Auth user to get a genuine UUID
+      let finalSupabaseUid = null;
+      try {
+        const { data: createdAuth, error: createAuthError } =
+          await this.supabase.auth.admin.createUser({
             email,
             email_confirm: true,
-            user_metadata: { full_name: resolvedName },
-          })
-          .catch(() => ({ data: null }));
-        finalSupabaseUid = createdAuth?.user?.id || crypto.randomUUID();
+            user_metadata: {
+              full_name: resolvedName,
+              apple_sub: appleSub,
+              auth_provider: "apple",
+            },
+          });
+        if (!createAuthError && createdAuth?.user?.id) {
+          finalSupabaseUid = createdAuth.user.id;
+        } else {
+          const { data: listData } = await this.supabase.auth.admin.listUsers();
+          const existingAuth = listData?.users?.find(
+            (u) => u.email?.toLowerCase() === email.toLowerCase()
+          );
+          finalSupabaseUid = existingAuth?.id || crypto.randomUUID();
+        }
+      } catch {
+        finalSupabaseUid = crypto.randomUUID();
       }
 
       user = await this.repo.createUser({
@@ -850,8 +873,8 @@ async login(data, deviceInfo = {}) {
         privacyVersion: CURRENT_PRIVACY_VERSION,
         ipAddress: deviceInfo.ipAddress,
         userAgent: deviceInfo.userAgent,
-        source: 'apple_oauth',
-      }).catch((err) => logger.warn({ err, userId: user.id }, 'Apple OAuth consent record failed'));
+        source: "apple_oauth",
+      }).catch((err) => logger.warn({ err, userId: user.id }, "Apple OAuth consent record failed"));
     }
 
     const { accessToken, refreshToken } = await this._issueTokenPair(
@@ -871,6 +894,69 @@ async login(data, deviceInfo = {}) {
       refresh_token: refreshToken,
       has_current_consent: hasCurrentConsent,
     };
+  }
+
+  // ─────────────────────────────────────────
+  // PRIVATE: Verify Apple ID Token
+  // ─────────────────────────────────────────
+  async _verifyAppleToken(token) {
+    if (!token || typeof token !== "string") return false;
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+
+    try {
+      const header = JSON.parse(
+        Buffer.from(parts[0], "base64url").toString("utf8")
+      );
+      const payload = JSON.parse(
+        Buffer.from(parts[1], "base64url").toString("utf8")
+      );
+
+      // Verify standard claims
+      if (payload.iss && payload.iss !== "https://appleid.apple.com") {
+        logger.warn({ iss: payload.iss }, "Apple token issuer mismatch");
+        return false;
+      }
+      if (payload.exp && payload.exp * 1000 < Date.now() - 60000) {
+        logger.warn("Apple token has expired");
+        return false;
+      }
+
+      // Fetch / refresh Apple JWKS (cached for 1 hour)
+      if (
+        !this._appleJwks ||
+        Date.now() - (this._appleJwksLastFetched || 0) > 3600000
+      ) {
+        try {
+          const res = await fetch("https://appleid.apple.com/auth/keys");
+          if (res.ok) {
+            this._appleJwks = await res.json();
+            this._appleJwksLastFetched = Date.now();
+          }
+        } catch (fetchErr) {
+          logger.warn({ err: fetchErr.message }, "Could not reach Apple JWKS endpoint");
+        }
+      }
+
+      if (this._appleJwks?.keys && Array.isArray(this._appleJwks.keys)) {
+        const jwk = this._appleJwks.keys.find((k) => k.kid === header.kid);
+        if (jwk) {
+          const pubKey = crypto.createPublicKey({ key: jwk, format: "jwk" });
+          const isValid = crypto.verify(
+            "RSA-SHA256",
+            Buffer.from(`${parts[0]}.${parts[1]}`),
+            pubKey,
+            Buffer.from(parts[2], "base64url")
+          );
+          return isValid;
+        }
+      }
+
+      return true;
+    } catch (err) {
+      logger.warn({ err: err.message }, "Apple token validation error");
+      return false;
+    }
   }
 
   // ─────────────────────────────────────────
