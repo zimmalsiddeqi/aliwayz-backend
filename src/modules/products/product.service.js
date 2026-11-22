@@ -52,10 +52,17 @@ class ProductService {
 
     const slug = createSlug(data.title);
 
+    // Auto-resolve to specific subcategory if seller selected a broad parent category
+    const finalCategoryId = await this._resolveSpecificCategory(
+      data.category_id,
+      data.title,
+      data.brand
+    );
+
     const product = await this.repo.createProduct({
       seller_id: sellerId,
       store_id: storeId,
-      category_id: data.category_id,
+      category_id: finalCategoryId || data.category_id,
       title: data.title,
       slug,
       description: data.description || null,
@@ -171,6 +178,14 @@ class ProductService {
     const priceChanged =
       data.price !== undefined && data.price !== product.price;
     const oldPrice = product.price;
+
+    if (data.category_id || data.title) {
+      data.category_id = await this._resolveSpecificCategory(
+        data.category_id || product.category_id,
+        data.title || product.title,
+        data.brand || product.brand
+      );
+    }
 
     const updated = await this.repo.updateProduct(productId, data);
 
@@ -736,6 +751,58 @@ class ProductService {
       status,
     });
     return { data, pagination: { page, limit, total: count } };
+  }
+
+  // ─────────────────────────────────────────
+  // PRIVATE: Resolve broad category to specific subcategory
+  // ─────────────────────────────────────────
+  async _resolveSpecificCategory(categoryId, title, brand) {
+    if (!title && !brand) return categoryId;
+
+    try {
+      const { data: categories } = await this.supabase
+        .from('categories')
+        .select('id, name, slug, parent_id')
+        .eq('is_active', true);
+
+      if (!categories || categories.length === 0) return categoryId;
+
+      const getDescendants = (parentId) => {
+        let desc = [];
+        const children = categories.filter((c) => c.parent_id === parentId);
+        for (const child of children) {
+          desc.push(child);
+          desc = desc.concat(getDescendants(child.id));
+        }
+        return desc;
+      };
+
+      const descendants = categoryId ? getDescendants(categoryId) : [];
+      const pool = descendants.length > 0 ? descendants : categories;
+
+      const searchText = `${title || ''} ${brand || ''}`.toLowerCase();
+      const sorted = [...pool].sort((a, b) => b.name.length - a.name.length);
+
+      for (const cat of sorted) {
+        const name = cat.name.toLowerCase();
+        if (name.length >= 3 && searchText.includes(name)) {
+          return cat.id;
+        }
+        if (name.includes('samsung') && searchText.includes('samsung')) {
+          return cat.id;
+        }
+        if (name === 'iphone' && (searchText.includes('iphone') || searchText.includes('apple phone'))) {
+          return cat.id;
+        }
+        if (name.includes('pixel') && searchText.includes('pixel')) {
+          return cat.id;
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, 'Error in _resolveSpecificCategory');
+    }
+
+    return categoryId;
   }
 }
 

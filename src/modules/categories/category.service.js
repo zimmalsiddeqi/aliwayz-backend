@@ -82,6 +82,47 @@ class CategoryService {
       }
       return ids;
     };
+    // Auto-heal / promote products sitting in broader ancestor categories
+    if (category.parent_id) {
+      const getAncestors = (catId) => {
+        let ancestors = [];
+        let curr = allCategories.find((c) => c.id === catId);
+        while (curr && curr.parent_id) {
+          ancestors.push(curr.parent_id);
+          curr = allCategories.find((c) => c.id === curr.parent_id);
+        }
+        return ancestors;
+      };
+      const ancestorIds = getAncestors(category.id);
+
+      if (ancestorIds.length > 0) {
+        const catNameClean = (category.name || '').trim().toLowerCase();
+        const terms = [category.name];
+        if (catNameClean.includes('samsung')) terms.push('Samsung');
+        if (catNameClean.includes('iphone')) terms.push('iPhone', 'Apple');
+        if (catNameClean.includes('pixel')) terms.push('Pixel');
+        if (catNameClean.includes('ipad')) terms.push('iPad');
+
+        for (const term of terms) {
+          const { data: looseProducts } = await this.supabase
+            .from('products')
+            .select('id')
+            .in('category_id', ancestorIds)
+            .ilike('title', `%${term}%`)
+            .eq('is_deleted', false);
+
+          if (looseProducts && looseProducts.length > 0) {
+            const looseIds = looseProducts.map((p) => p.id);
+            await this.supabase
+              .from('products')
+              .update({ category_id: category.id })
+              .in('id', looseIds);
+            logger.info({ categoryId: category.id, looseIds, term }, 'Auto-promoted loose ancestor products to subcategory');
+          }
+        }
+      }
+    }
+
     const categoryIds = [category.id, ...getDescendants(category.id)];
 
     const { data, count } = await this.productRepo.browseProducts({
